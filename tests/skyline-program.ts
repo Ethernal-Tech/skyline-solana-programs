@@ -191,4 +191,127 @@ describe("skyline-program", () => {
       assert.equal(recipientBalance.value.amount, "1000000000");
     });
   });
+
+  describe("Bridge Tokens - Bad Cases", () => {
+    it("one of the signers is not part of the validator set", async () => {
+      const amount = new anchor.BN(1_000_000_000);
+      const recipientAta = getAssociatedTokenAddressSync(
+        mint,
+        recipient.publicKey
+      );
+
+      const fakeSigner = anchor.web3.Keypair.generate();
+
+      const remainingAccounts = [
+        ...validators.slice(0, 6).map((v) => ({
+          pubkey: v.publicKey,
+          isSigner: true,
+          isWritable: false,
+        })),
+        {
+          pubkey: fakeSigner.publicKey,
+          isSigner: true,
+          isWritable: false,
+        },
+      ];
+
+      try {
+        await program.methods
+          .bridgeTokens(amount)
+          .accounts({
+            payer: owner.publicKey,
+            mint: mint,
+            recipient: recipient.publicKey,
+            recipientAta: recipientAta,
+          })
+          .remainingAccounts(remainingAccounts)
+          .signers([...validators.slice(0, 6), fakeSigner])
+          .rpc();
+
+        assert.fail("Transaction should have failed with InvalidSigner error");
+      } catch (e) {
+        expect(e.error.errorCode.code).to.equal("InvalidSigner");
+      }
+    });
+
+    it("quorum of signers not reached for the transaction", async () => {
+      const amount = new anchor.BN(1_000_000_000);
+      const recipientAta = getAssociatedTokenAddressSync(
+        mint,
+        recipient.publicKey
+      );
+
+      const remainingAccounts = validators.slice(0, 2).map((v) => ({
+        pubkey: v.publicKey,
+        isSigner: true,
+        isWritable: false,
+      }));
+
+      try {
+        await program.methods
+          .bridgeTokens(amount)
+          .accounts({
+            payer: owner.publicKey,
+            mint: mint,
+            recipient: recipient.publicKey,
+            recipientAta: recipientAta,
+          })
+          .remainingAccounts(remainingAccounts)
+          .signers(validators.slice(0, 2))
+          .rpc();
+
+        assert.fail("Transaction should have failed with NotEnoughSigners error");
+      } catch (e) {
+        expect(e.error.errorCode.code).to.equal("NotEnoughSigners");
+      }
+    });
+
+    it("provided token has a mint authority different from the PDA account", async () => {
+      const amount = new anchor.BN(1_000_000_000);
+      const recipientAta = getAssociatedTokenAddressSync(
+        mint,
+        recipient.publicKey
+      );
+
+      const wrongMint = await createMint(
+        provider.connection,
+        owner.payer,
+        anchor.web3.Keypair.generate().publicKey,
+        null,
+        9
+      );
+
+      const remainingAccounts = validators.slice(0, 7).map((v) => ({
+        pubkey: v.publicKey,
+        isSigner: true,
+        isWritable: false,
+      }));
+
+
+      let failed = false;
+
+      try {
+        await program.methods
+          .bridgeTokens(amount)
+          .accounts({
+            payer: owner.publicKey,
+            mint: wrongMint,
+            recipient: recipient.publicKey,
+            recipientAta: getAssociatedTokenAddressSync(
+              wrongMint,
+              recipient.publicKey
+            ),
+          })
+          .remainingAccounts(remainingAccounts)
+          .signers(validators.slice(0, 7))
+          .rpc();
+
+        assert.fail("Transaction should have failed because validator set is not mint authority");
+      } catch (e) {
+        failed = true
+      }
+
+      assert.isTrue(failed, "Expected transaction to fail but it succeeded");
+    });
+  });
 });
