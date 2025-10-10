@@ -31,6 +31,7 @@ impl<'info> Initialize<'info> {
         require!(validators_copy.len() == validators.len(), CustomError::ValidatorsNotUnique);
 
         validator_set.signers = validators;
+        // Set the threshold to 2/3 of the validators, rounded up
         validator_set.threshold = ((validator_set.signers.len() as f32) * 2.0 / 3.0).ceil() as u8;
         validator_set.bump = ctx.bumps.validator_set;
 

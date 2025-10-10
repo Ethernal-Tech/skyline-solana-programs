@@ -21,4 +21,8 @@ pub mod skyline_program {
     pub fn initialize(ctx: Context<Initialize>, validators: Vec<Pubkey>) -> Result<()> {
         Initialize::process_instruction(ctx, validators)
     }
+
+    pub fn bridge_tokens(ctx: Context<BridgeTokens>, amount: u64) -> Result<()> {
+        BridgeTokens::process_instruction(ctx, amount)
+    }
 }

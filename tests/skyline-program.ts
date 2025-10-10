@@ -2,6 +2,14 @@ import * as anchor from "@coral-xyz/anchor";
 import { Program, web3 } from "@coral-xyz/anchor";
 import { SkylineProgram } from "../target/types/skyline_program";
 import { assert, expect } from "chai";
+import {
+  CpiGuardLayout,
+  createAssociatedTokenAccount,
+  createMint,
+  getAssociatedTokenAddress,
+  getAssociatedTokenAddressSync,
+} from "@solana/spl-token";
+import { publicKey } from "@coral-xyz/anchor/dist/cjs/utils";
 
 describe("skyline-program", () => {
   anchor.setProvider(anchor.AnchorProvider.env());
@@ -19,6 +27,13 @@ describe("skyline-program", () => {
     program.programId
   )[0];
 
+  const recipient = anchor.web3.Keypair.generate();
+
+  let mint: web3.PublicKey;
+  createMint(provider.connection, owner.payer, vsPDA, null, 9).then(
+    (m) => (mint = m)
+  );
+
   describe("Initialize - Bad Cases", () => {
     it("provided less (3) than MIN_VALIDATORS (4) validators", async () => {
       try {
@@ -28,8 +43,10 @@ describe("skyline-program", () => {
             signer: owner.publicKey,
           })
           .rpc();
-        
-        assert.fail("Transaction should have failed with MinValidatorsNotMet error");
+
+        assert.fail(
+          "Transaction should have failed with MinValidatorsNotMet error"
+        );
       } catch (e) {
         expect(e.error.errorCode.code).to.equal("MinValidatorsNotMet");
       }
@@ -43,8 +60,10 @@ describe("skyline-program", () => {
             signer: owner.publicKey,
           })
           .rpc();
-        
-        assert.fail("Transaction should have failed with MaxValidatorsExceeded error");
+
+        assert.fail(
+          "Transaction should have failed with MaxValidatorsExceeded error"
+        );
       } catch (e) {
         expect(e.error.errorCode.code).to.equal("MaxValidatorsExceeded");
       }
@@ -66,8 +85,10 @@ describe("skyline-program", () => {
             signer: owner.publicKey,
           })
           .rpc();
-        
-        assert.fail("Transaction should have failed with ValidatorsNotUnique error");
+
+        assert.fail(
+          "Transaction should have failed with ValidatorsNotUnique error"
+        );
       } catch (e) {
         expect(e.error.errorCode.code).to.equal("ValidatorsNotUnique");
       }
@@ -81,8 +102,10 @@ describe("skyline-program", () => {
             signer: owner.publicKey,
           })
           .rpc();
-        
-        assert.fail("Transaction should have failed with MinValidatorsNotMet error");
+
+        assert.fail(
+          "Transaction should have failed with MinValidatorsNotMet error"
+        );
       } catch (e) {
         expect(e.error.errorCode.code).to.equal("MinValidatorsNotMet");
       }
@@ -99,7 +122,7 @@ describe("skyline-program", () => {
         .rpc();
 
       const vs = await program.account.validatorSet.fetch(vsPDA);
-      
+
       vs.signers.forEach((v) => {
         assert(validators.slice(0, 10).find((val) => val.publicKey.equals(v)));
       });
@@ -118,18 +141,61 @@ describe("skyline-program", () => {
             signer: owner.publicKey,
           })
           .rpc();
-        
-        assert.fail("Transaction should have failed because account already exists");
+
+        assert.fail(
+          "Transaction should have failed because account already exists"
+        );
       } catch (error) {
         const errorString = error.toString();
-        
-        const accountExistsError = 
-          errorString.includes("already in use") || 
+
+        const accountExistsError =
+          errorString.includes("already in use") ||
           errorString.includes("custom program error: 0x0") ||
           errorString.includes("AccountAlreadyInitialized");
-        
+
         expect(accountExistsError).to.be.true;
       }
+    });
+  });
+
+  describe("Bridge Tokens - Success Case", () => {
+    it("successful", async () => {
+      const amount = new anchor.BN(1_000_000_000);
+      const recipientAta = getAssociatedTokenAddressSync(
+        mint,
+        recipient.publicKey
+      );
+
+      // await createAssociatedTokenAccount(
+      //   provider.connection,
+      //   provider.wallet.payer,
+      //   mint,
+      //   recipient.publicKey
+      // );
+
+      const remainingAccounts = validators.slice(0, 7).map((v) => ({
+        pubkey: v.publicKey,
+        isSigner: true,
+        isWritable: false,
+      }));
+
+      await program.methods
+        .bridgeTokens(amount)
+        .accounts({
+          payer: owner.publicKey,
+          mint: mint,
+          recipient: recipient.publicKey,
+          recipientAta: recipientAta,
+        })
+        .remainingAccounts(remainingAccounts)
+        .signers(validators.slice(0, 7))
+        .rpc();
+
+      const recipientBalance = await provider.connection.getTokenAccountBalance(
+        recipientAta
+      );
+
+      assert.equal(recipientBalance.value.amount, "1000000000");
     });
   });
 });

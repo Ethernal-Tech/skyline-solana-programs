@@ -8,4 +8,8 @@ pub enum CustomError {
     MinValidatorsNotMet,
     #[msg("Validators need to be unique")]
     ValidatorsNotUnique,
+    #[msg("Not enough signers provided")]
+    NotEnoughSigners,
+    #[msg("Invalid signer provided")]
+    InvalidSigner,
 }
