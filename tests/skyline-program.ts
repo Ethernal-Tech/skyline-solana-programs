@@ -166,13 +166,6 @@ describe("skyline-program", () => {
         recipient.publicKey
       );
 
-      // await createAssociatedTokenAccount(
-      //   provider.connection,
-      //   provider.wallet.payer,
-      //   mint,
-      //   recipient.publicKey
-      // );
-
       const remainingAccounts = validators.slice(0, 7).map((v) => ({
         pubkey: v.publicKey,
         isSigner: true,
