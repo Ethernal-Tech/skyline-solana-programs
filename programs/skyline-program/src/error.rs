@@ -12,4 +12,6 @@ pub enum CustomError {
     NotEnoughSigners,
     #[msg("Invalid signer provided")]
     InvalidSigner,
+    #[msg("Insufficient funds in the account")]
+    InsufficientFunds,
 }

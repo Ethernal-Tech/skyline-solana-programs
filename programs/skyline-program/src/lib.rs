@@ -25,4 +25,13 @@ pub mod skyline_program {
     pub fn bridge_tokens(ctx: Context<BridgeTokens>, amount: u64) -> Result<()> {
         BridgeTokens::process_instruction(ctx, amount)
     }
+
+    pub fn bridge_request(
+        ctx: Context<BridgeRequest>,
+        amount: u64,
+        receiver: [u8; 57],
+        destination_chain: u8,
+    ) -> Result<()> {
+        BridgeRequest::process_instruction(ctx, amount, receiver, destination_chain)
+    }
 }

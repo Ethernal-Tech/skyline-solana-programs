@@ -8,6 +8,7 @@ import {
   createMint,
   getAssociatedTokenAddress,
   getAssociatedTokenAddressSync,
+  mintTo,
 } from "@solana/spl-token";
 import { publicKey } from "@coral-xyz/anchor/dist/cjs/utils";
 
@@ -260,7 +261,9 @@ describe("skyline-program", () => {
           .signers(validators.slice(0, 2))
           .rpc();
 
-        assert.fail("Transaction should have failed with NotEnoughSigners error");
+        assert.fail(
+          "Transaction should have failed with NotEnoughSigners error"
+        );
       } catch (e) {
         expect(e.error.errorCode.code).to.equal("NotEnoughSigners");
       }
@@ -287,7 +290,6 @@ describe("skyline-program", () => {
         isWritable: false,
       }));
 
-
       let failed = false;
 
       try {
@@ -306,12 +308,75 @@ describe("skyline-program", () => {
           .signers(validators.slice(0, 7))
           .rpc();
 
-        assert.fail("Transaction should have failed because validator set is not mint authority");
+        assert.fail(
+          "Transaction should have failed because validator set is not mint authority"
+        );
       } catch (e) {
-        failed = true
+        failed = true;
       }
 
       assert.isTrue(failed, "Expected transaction to fail but it succeeded");
+    });
+  });
+
+  describe("Bridge Request - Success Case", () => {
+    it("successful", async () => {
+      const amount = new anchor.BN(1_000_000_000);
+      let receiver: number[];
+      receiver = Array.from(
+        Buffer.from(
+          "0x1234567890123456789012345678901234567890123456789012345678901234567890123",
+          "hex"
+        )
+      );
+
+      const destination_chain = 1; // Example chain ID
+
+      const ownerAta = await createAssociatedTokenAccount(
+        provider.connection,
+        owner.payer,
+        mint,
+        owner.publicKey
+      );
+
+      // Mint some tokens to the owner's associated token account for testing
+      const remainingAccounts = validators.slice(0, 7).map((v) => ({
+        pubkey: v.publicKey,
+        isSigner: true,
+        isWritable: false,
+      }));
+
+      await program.methods
+        .bridgeTokens(amount)
+        .accounts({
+          payer: owner.publicKey,
+          mint: mint,
+          recipient: recipient.publicKey,
+          recipientAta: ownerAta,
+        })
+        .remainingAccounts(remainingAccounts)
+        .signers(validators.slice(0, 7))
+        .rpc();
+
+      await program.methods
+        .bridgeRequest(amount, receiver, destination_chain)
+        .accounts({
+          signer: owner.publicKey,
+          signersAta: ownerAta,
+          mint: mint,
+        })
+        .rpc();
+
+      const bridgingRequestPDA = anchor.web3.PublicKey.findProgramAddressSync(
+        [Buffer.from("bridging_request"), owner.publicKey.toBuffer()],
+        program.programId
+      )[0];
+
+      const br = await program.account.bridgingRequest.fetch(
+        bridgingRequestPDA
+      );
+
+      assert.equal(br.sender.toBase58(), owner.publicKey.toBase58());
     });
   });
 });
