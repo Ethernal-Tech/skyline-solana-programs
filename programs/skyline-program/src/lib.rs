@@ -34,4 +34,11 @@ pub mod skyline_program {
     ) -> Result<()> {
         BridgeRequest::process_instruction(ctx, amount, receiver, destination_chain)
     }
+
+    pub fn validator_set_change(
+        ctx: Context<ValidatorSetChange>,
+        new_validator_set: Vec<Pubkey>,
+    ) -> Result<()> {
+        ValidatorSetChange::process_instruction(ctx, new_validator_set)
+    }
 }

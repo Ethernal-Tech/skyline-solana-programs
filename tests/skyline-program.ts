@@ -325,9 +325,9 @@ describe("skyline-program", () => {
       const amount = new anchor.BN(1_000_000_000);
       let receiver: number[];
       receiver = Array.from(
-      Buffer.from(
-        "0x1234567890123456789012345678901234567890123456789012345678901234567890123",
-        "hex"
+        Buffer.from(
+          "0x1234567890123456789012345678901234567890123456789012345678901234567890123",
+          "hex"
         )
       );
       const destination_chain = 1;
@@ -379,66 +379,66 @@ describe("skyline-program", () => {
       assert.equal(br.amount.toString(), amount.toString());
       assert.equal(br.destinationChain, destination_chain);
     });
-  })
+  });
 
   describe("Bridge Request - Bad Cases", () => {
     it("bridging an amount greater than the available balance", async () => {
-    let receiver: number[];
-    receiver = Array.from(
-      Buffer.from(
-        "0x1234567890123456789012345678901234567890123456789012345678901234567890123",
-        "hex"
-      )
-    );
-    const destination_chain = 1;
+      let receiver: number[];
+      receiver = Array.from(
+        Buffer.from(
+          "0x1234567890123456789012345678901234567890123456789012345678901234567890123",
+          "hex"
+        )
+      );
+      const destination_chain = 1;
 
-    const newOwner = anchor.web3.Keypair.generate();
+      const newOwner = anchor.web3.Keypair.generate();
 
-    const airdropSig = await provider.connection.requestAirdrop(
-      newOwner.publicKey,
-      2 * anchor.web3.LAMPORTS_PER_SOL
-    );
-    await provider.connection.confirmTransaction(airdropSig);
+      const airdropSig = await provider.connection.requestAirdrop(
+        newOwner.publicKey,
+        2 * anchor.web3.LAMPORTS_PER_SOL
+      );
+      await provider.connection.confirmTransaction(airdropSig);
 
-    const ownerAtaInfo = await getOrCreateAssociatedTokenAccount(
-      provider.connection,
-      owner.payer,
-      mint,
-      newOwner.publicKey
-    );
-    const ownerAta = ownerAtaInfo.address;
+      const ownerAtaInfo = await getOrCreateAssociatedTokenAccount(
+        provider.connection,
+        owner.payer,
+        mint,
+        newOwner.publicKey
+      );
+      const ownerAta = ownerAtaInfo.address;
 
-    const mintAmount = new anchor.BN(1_000_000_000);
-    const remainingAccounts = validators.slice(0, 7).map((v) => ({
-      pubkey: v.publicKey,
-      isSigner: true,
-      isWritable: false,
-    }));
+      const mintAmount = new anchor.BN(1_000_000_000);
+      const remainingAccounts = validators.slice(0, 7).map((v) => ({
+        pubkey: v.publicKey,
+        isSigner: true,
+        isWritable: false,
+      }));
 
-    await program.methods
-      .bridgeTokens(mintAmount)
-      .accounts({
-        payer: owner.publicKey,
-        mint: mint,
-        recipient: newOwner.publicKey,
-        recipientAta: ownerAta,
-      })
-      .remainingAccounts(remainingAccounts)
-      .signers(validators.slice(0, 7))
-      .rpc();
-
-    const bridgeAmount = new anchor.BN(10_000_000_000);
-
-    try {
       await program.methods
-        .bridgeRequest(bridgeAmount, receiver, destination_chain)
+        .bridgeTokens(mintAmount)
         .accounts({
-          signer: newOwner.publicKey,
-          signersAta: ownerAta,
+          payer: owner.publicKey,
           mint: mint,
+          recipient: newOwner.publicKey,
+          recipientAta: ownerAta,
         })
-        .signers([newOwner])
+        .remainingAccounts(remainingAccounts)
+        .signers(validators.slice(0, 7))
         .rpc();
+
+      const bridgeAmount = new anchor.BN(10_000_000_000);
+
+      try {
+        await program.methods
+          .bridgeRequest(bridgeAmount, receiver, destination_chain)
+          .accounts({
+            signer: newOwner.publicKey,
+            signersAta: ownerAta,
+            mint: mint,
+          })
+          .signers([newOwner])
+          .rpc();
 
         assert.fail(
           "Transaction should have failed with InsufficientFunds error"
@@ -446,90 +446,152 @@ describe("skyline-program", () => {
       } catch (e) {
         expect(e.error.errorCode.code).to.equal("InsufficientFunds");
       }
-  });
+    });
 
-  it("ATA is not initialized", async () => {
-    const amount = new anchor.BN(1_000_000_000);
-    let receiver: number[];
-    receiver = Array.from(
-      Buffer.from(
-        "0x1234567890123456789012345678901234567890123456789012345678901234567890123",
-        "hex"
-      )
-    );
-    const destination_chain = 1;
+    it("ATA is not initialized", async () => {
+      const amount = new anchor.BN(1_000_000_000);
+      let receiver: number[];
+      receiver = Array.from(
+        Buffer.from(
+          "0x1234567890123456789012345678901234567890123456789012345678901234567890123",
+          "hex"
+        )
+      );
+      const destination_chain = 1;
 
-    const newOwner = anchor.web3.Keypair.generate();
-    const airdropSig = await provider.connection.requestAirdrop(
-      newOwner.publicKey,
-      2 * anchor.web3.LAMPORTS_PER_SOL
-    );
-    await provider.connection.confirmTransaction(airdropSig);
+      const newOwner = anchor.web3.Keypair.generate();
+      const airdropSig = await provider.connection.requestAirdrop(
+        newOwner.publicKey,
+        2 * anchor.web3.LAMPORTS_PER_SOL
+      );
+      await provider.connection.confirmTransaction(airdropSig);
 
-    const ownerAta = await getAssociatedTokenAddress(
-      mint,
-      newOwner.publicKey
-    );
+      const ownerAta = await getAssociatedTokenAddress(
+        mint,
+        newOwner.publicKey
+      );
 
-    try {
-      await program.methods
-        .bridgeRequest(amount, receiver, destination_chain)
-        .accounts({
-          signer: newOwner.publicKey,
-          signersAta: ownerAta,
-          mint: mint,
-        })
-        .signers([newOwner])
-        .rpc();
+      try {
+        await program.methods
+          .bridgeRequest(amount, receiver, destination_chain)
+          .accounts({
+            signer: newOwner.publicKey,
+            signersAta: ownerAta,
+            mint: mint,
+          })
+          .signers([newOwner])
+          .rpc();
 
         assert.fail(
           "Transaction should have failed with AccountNotInitialized error"
         );
-    } catch (e: any) {
-      expect(e.error.errorCode.code).to.equal("AccountNotInitialized");
-    }
-  });
+      } catch (e: any) {
+        expect(e.error.errorCode.code).to.equal("AccountNotInitialized");
+      }
+    });
 
-  it("invalid length for the receiver field", async () => {
-    const amount = new anchor.BN(1_000_000_000);
-    let receiver: number[] = [1, 2, 3, 4, 5];
-    const destination_chain = 1;
+    it("invalid length for the receiver field", async () => {
+      const amount = new anchor.BN(1_000_000_000);
+      let receiver: number[] = [1, 2, 3, 4, 5];
+      const destination_chain = 1;
 
-    const newOwner = anchor.web3.Keypair.generate();
-    const airdropSig = await provider.connection.requestAirdrop(
-      newOwner.publicKey,
-      2 * anchor.web3.LAMPORTS_PER_SOL
-    );
-    await provider.connection.confirmTransaction(airdropSig);
+      const newOwner = anchor.web3.Keypair.generate();
+      const airdropSig = await provider.connection.requestAirdrop(
+        newOwner.publicKey,
+        2 * anchor.web3.LAMPORTS_PER_SOL
+      );
+      await provider.connection.confirmTransaction(airdropSig);
 
-    const ownerAtaInfo = await getOrCreateAssociatedTokenAccount(
-      provider.connection,
-      owner.payer,
-      mint,
-      newOwner.publicKey
-    );
-    const ownerAta = ownerAtaInfo.address;
+      const ownerAtaInfo = await getOrCreateAssociatedTokenAccount(
+        provider.connection,
+        owner.payer,
+        mint,
+        newOwner.publicKey
+      );
+      const ownerAta = ownerAtaInfo.address;
 
-    const mintAmount = new anchor.BN(1_000_000_000);
-    const remainingAccounts = validators.slice(0, 7).map((v) => ({
-      pubkey: v.publicKey,
-      isSigner: true,
-      isWritable: false,
-    }));
+      const mintAmount = new anchor.BN(1_000_000_000);
+      const remainingAccounts = validators.slice(0, 7).map((v) => ({
+        pubkey: v.publicKey,
+        isSigner: true,
+        isWritable: false,
+      }));
 
-    await program.methods
-      .bridgeTokens(mintAmount)
-      .accounts({
-        payer: owner.publicKey,
-        mint: mint,
-        recipient: newOwner.publicKey,
-        recipientAta: ownerAta,
-      })
-      .remainingAccounts(remainingAccounts)
-      .signers(validators.slice(0, 7))
-      .rpc();
+      await program.methods
+        .bridgeTokens(mintAmount)
+        .accounts({
+          payer: owner.publicKey,
+          mint: mint,
+          recipient: newOwner.publicKey,
+          recipientAta: ownerAta,
+        })
+        .remainingAccounts(remainingAccounts)
+        .signers(validators.slice(0, 7))
+        .rpc();
 
-    try {
+      try {
+        await program.methods
+          .bridgeRequest(amount, receiver, destination_chain)
+          .accounts({
+            signer: newOwner.publicKey,
+            signersAta: ownerAta,
+            mint: mint,
+          })
+          .signers([newOwner])
+          .rpc();
+
+        assert.fail("Transaction should have failed");
+      } catch (e: any) {
+        assert.ok(e, "Expected error for invalid receiver length");
+      }
+    });
+
+    it("bridge request already exists for the sender", async () => {
+      const amount = new anchor.BN(1_000_000_000);
+      let receiver: number[];
+      receiver = Array.from(
+        Buffer.from(
+          "0x1234567890123456789012345678901234567890123456789012345678901234567890123",
+          "hex"
+        )
+      );
+      const destination_chain = 1;
+
+      const newOwner = anchor.web3.Keypair.generate();
+      const airdropSig = await provider.connection.requestAirdrop(
+        newOwner.publicKey,
+        2 * anchor.web3.LAMPORTS_PER_SOL
+      );
+      await provider.connection.confirmTransaction(airdropSig);
+
+      const ownerAtaInfo = await getOrCreateAssociatedTokenAccount(
+        provider.connection,
+        owner.payer,
+        mint,
+        newOwner.publicKey
+      );
+      const ownerAta = ownerAtaInfo.address;
+
+      const mintAmount = new anchor.BN(2_000_000_000);
+      const remainingAccounts = validators.slice(0, 7).map((v) => ({
+        pubkey: v.publicKey,
+        isSigner: true,
+        isWritable: false,
+      }));
+
+      await program.methods
+        .bridgeTokens(mintAmount)
+        .accounts({
+          payer: owner.publicKey,
+          mint: mint,
+          recipient: newOwner.publicKey,
+          recipientAta: ownerAta,
+        })
+        .remainingAccounts(remainingAccounts)
+        .signers(validators.slice(0, 7))
+        .rpc();
+
+      // First bridge request should succeed
       await program.methods
         .bridgeRequest(amount, receiver, destination_chain)
         .accounts({
@@ -540,86 +602,50 @@ describe("skyline-program", () => {
         .signers([newOwner])
         .rpc();
 
-        assert.fail(
-          "Transaction should have failed"
-        );
-    } catch (e: any) {
-      assert.ok(e, "Expected error for invalid receiver length");
-    }
+      // Second bridge request with same signer should fail
+      try {
+        await program.methods
+          .bridgeRequest(amount, receiver, destination_chain)
+          .accounts({
+            signer: newOwner.publicKey,
+            signersAta: ownerAta,
+            mint: mint,
+          })
+          .signers([newOwner])
+          .rpc();
+
+        assert.fail("Expected transaction to fail");
+      } catch (e: any) {
+        assert.ok(e, "Expected error");
+      }
+    });
   });
 
-  it("bridge request already exists for the sender", async () => {
-    const amount = new anchor.BN(1_000_000_000);
-    let receiver: number[];
-    receiver = Array.from(
-      Buffer.from(
-        "0x1234567890123456789012345678901234567890123456789012345678901234567890123",
-        "hex"
-      )
-    );
-    const destination_chain = 1;
+  describe("Validator Set Change - Success Case", () => {
+    it("successful", async () => {
+      const newValidators = validators.slice(5, 15);
 
-    const newOwner = anchor.web3.Keypair.generate();
-    const airdropSig = await provider.connection.requestAirdrop(
-      newOwner.publicKey,
-      2 * anchor.web3.LAMPORTS_PER_SOL
-    );
-    await provider.connection.confirmTransaction(airdropSig);
+      const remainingAccounts = validators.slice(0, 7).map((v) => ({
+        pubkey: v.publicKey,
+        isSigner: true,
+        isWritable: false,
+      }));
 
-    const ownerAtaInfo = await getOrCreateAssociatedTokenAccount(
-      provider.connection,
-      owner.payer,
-      mint,
-      newOwner.publicKey
-    );
-    const ownerAta = ownerAtaInfo.address;
-
-    const mintAmount = new anchor.BN(2_000_000_000);
-    const remainingAccounts = validators.slice(0, 7).map((v) => ({
-      pubkey: v.publicKey,
-      isSigner: true,
-      isWritable: false,
-    }));
-
-    await program.methods
-      .bridgeTokens(mintAmount)
-      .accounts({
-        payer: owner.publicKey,
-        mint: mint,
-        recipient: newOwner.publicKey,
-        recipientAta: ownerAta,
-      })
-      .remainingAccounts(remainingAccounts)
-      .signers(validators.slice(0, 7))
-      .rpc();
-
-    // First bridge request should succeed
-    await program.methods
-      .bridgeRequest(amount, receiver, destination_chain)
-      .accounts({
-        signer: newOwner.publicKey,
-        signersAta: ownerAta,
-        mint: mint,
-      })
-      .signers([newOwner])
-      .rpc();
-
-    // Second bridge request with same signer should fail
-    try {
       await program.methods
-        .bridgeRequest(amount, receiver, destination_chain)
+        .validatorSetChange(newValidators.map((v) => v.publicKey))
         .accounts({
-          signer: newOwner.publicKey,
-          signersAta: ownerAta,
-          mint: mint,
+          signer: owner.publicKey,
+          validatorSet: vsPDA,
         })
-        .signers([newOwner])
+        .remainingAccounts(remainingAccounts)
+        .signers(validators.slice(0, 7))
         .rpc();
 
-      assert.fail("Expected transaction to fail");
-    } catch (e: any) {
-      assert.ok(e, "Expected error");
-    }
-  });
+      const vs = await program.account.validatorSet.fetch(vsPDA);
+
+      vs.signers.forEach((v) => {
+        assert(newValidators.find((val) => val.publicKey.equals(v)));
+      });
+    });
   });
 });

@@ -6,3 +6,6 @@ pub use bridge_tokens::*;
 
 pub mod bridge_request;
 pub use bridge_request::*;
+
+pub mod validator_set_change;
+pub use validator_set_change::*;
