@@ -41,4 +41,8 @@ pub mod skyline_program {
     ) -> Result<()> {
         ValidatorSetChange::process_instruction(ctx, new_validator_set)
     }
+
+    pub fn close_request(ctx: Context<CloseRequest>) -> Result<()> {
+        CloseRequest::process_instruction(ctx)
+    }
 }

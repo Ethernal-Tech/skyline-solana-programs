@@ -621,6 +621,38 @@ describe("skyline-program", () => {
     });
   });
 
+  describe("Close Request - Success Case", () => {
+    it("successful", async () => {
+      const bridgingRequestPDA = anchor.web3.PublicKey.findProgramAddressSync(
+        [Buffer.from("bridging_request"), owner.publicKey.toBuffer()],
+        program.programId
+      )[0];
+
+      const remainingAccounts = validators.slice(0, 7).map((v) => ({
+        pubkey: v.publicKey,
+        isSigner: true,
+        isWritable: false,
+      }));
+
+      await program.methods
+        .closeRequest()
+        .accounts({
+          signer: owner.publicKey,
+          bridgingRequest: bridgingRequestPDA,
+        })
+        .remainingAccounts(remainingAccounts)
+        .signers(validators.slice(0, 7))
+        .rpc();
+
+      try {
+        await program.account.bridgingRequest.fetch(bridgingRequestPDA);
+        assert.fail("Expected fetching closed account to fail");
+      } catch (e: any) {
+        assert.ok(e, "Expected error when fetching closed account");
+      }
+    });
+  });
+
   describe("Validator Set Change - Success Case", () => {
     it("successful", async () => {
       const newValidators = validators.slice(5, 15);

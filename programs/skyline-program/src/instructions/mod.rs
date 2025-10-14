@@ -9,3 +9,6 @@ pub use bridge_request::*;
 
 pub mod validator_set_change;
 pub use validator_set_change::*;
+
+pub mod close_requests;
+pub use close_requests::*;
