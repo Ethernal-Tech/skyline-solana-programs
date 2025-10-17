@@ -653,6 +653,160 @@ describe("skyline-program", () => {
     });
   });
 
+  describe("Validator Set Change - Bad Cases", () => {
+    it("quorum of signers not reached for the transaction", async () => {
+      const newValidators = validators.slice(5, 15);
+
+      const remainingAccounts = validators.slice(0, 2).map((v) => ({
+        pubkey: v.publicKey,
+        isSigner: true,
+        isWritable: false,
+      }));
+
+      try {
+        await program.methods
+          .validatorSetChange(newValidators.map((v) => v.publicKey))
+          .accounts({
+            signer: owner.publicKey,
+            validatorSet: vsPDA,
+          })
+          .remainingAccounts(remainingAccounts)
+          .signers(validators.slice(0, 2))
+          .rpc();
+
+        assert.fail(
+          "Transaction should have failed with NotEnoughSigners error"
+        );
+      } catch (e) {
+        expect(e.error.errorCode.code).to.equal("NotEnoughSigners");
+      }
+    });
+
+    it("one of the signers is not part of the validator set", async () => {
+      const newValidators = validators.slice(5, 15);
+
+      const invalidSigner = anchor.web3.Keypair.generate();
+      const remainingAccounts = [
+        ...validators.slice(0, 6).map((v) => ({
+          pubkey: v.publicKey,
+          isSigner: true,
+          isWritable: false,
+        })),
+        {
+          pubkey: invalidSigner.publicKey,
+          isSigner: true,
+          isWritable: false,
+        },
+      ];
+
+      try {
+        await program.methods
+          .validatorSetChange(newValidators.map((v) => v.publicKey))
+          .accounts({
+            signer: owner.publicKey,
+            validatorSet: vsPDA,
+          })
+          .remainingAccounts(remainingAccounts)
+          .signers([...validators.slice(0, 6), invalidSigner])
+          .rpc();
+
+        assert.fail("Transaction should have failed with InvalidSigner error");
+      } catch (e) {
+        expect(e.error.errorCode.code).to.equal("InvalidSigner");
+      }
+    });
+
+    it("provided new validator set contains less validators (3) than MIN_VALIDATORS (4)", async () => {
+      const remainingAccounts = validators.slice(0, 7).map((v) => ({
+        pubkey: v.publicKey,
+        isSigner: true,
+        isWritable: false,
+      }));
+
+      try {
+        await program.methods
+          .validatorSetChange(validators.slice(0, 3).map((v) => v.publicKey))
+          .accounts({
+            signer: owner.publicKey,
+            validatorSet: vsPDA,
+          })
+          .remainingAccounts(remainingAccounts)
+          .signers(validators.slice(0, 7))
+          .rpc();
+
+        assert.fail(
+          "Transaction should have failed with MinValidatorsNotMet error"
+        );
+      } catch (e) {
+        expect(e.error.errorCode.code).to.equal("MinValidatorsNotMet");
+      }
+    });
+
+    // Error: Transaction too large: 1534 > 1232 !!!
+    //
+    // it("provided new validator set contains more validators (20) than MAX_VALIDATORS (19)", async () => {
+    //   const remainingAccounts = validators.slice(0, 7).map((v) => ({
+    //     pubkey: v.publicKey,
+    //     isSigner: true,
+    //     isWritable: false,
+    //   }));
+
+    //   try {
+    //     await program.methods
+    //       .validatorSetChange(validators.slice(0, 20).map((v) => v.publicKey))
+    //       .accounts({
+    //         signer: owner.publicKey,
+    //         validatorSet: vsPDA,
+    //       })
+    //       .remainingAccounts(remainingAccounts)
+    //       .signers(validators.slice(0, 7))
+    //       .rpc();
+
+    //     assert.fail(
+    //       "Transaction should have failed with MaxValidatorsExceeded error"
+    //     );
+    //   } catch (e) {
+    //     console.log(e);
+    //     expect(e.error.errorCode.code).to.equal("MaxValidatorsExceeded");
+    //   }
+    // });
+
+    it("provided new validator set contains duplicates", async () => {
+      const newValidators = [
+        validators[3],
+        validators[3],
+        validators[5],
+        validators[12],
+        validators[13],
+        validators[11],
+      ];
+
+      const remainingAccounts = validators.slice(0, 7).map((v) => ({
+        pubkey: v.publicKey,
+        isSigner: true,
+        isWritable: false,
+      }));
+
+      try {
+        await program.methods
+          .validatorSetChange(newValidators.map((v) => v.publicKey))
+          .accounts({
+            signer: owner.publicKey,
+            validatorSet: vsPDA,
+          })
+          .remainingAccounts(remainingAccounts)
+          .signers(validators.slice(0, 7))
+          .rpc();
+
+        assert.fail(
+          "Transaction should have failed with ValidatorsNotUnique error"
+        );
+      } catch (e) {
+        expect(e.error.errorCode.code).to.equal("ValidatorsNotUnique");
+      }
+    });
+  });
+
   describe("Validator Set Change - Success Case", () => {
     it("successful", async () => {
       const newValidators = validators.slice(5, 15);
