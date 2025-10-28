@@ -15,7 +15,7 @@ use anchor_lang::prelude::*;
 pub enum CustomError {
     /// Maximum number of validators exceeded.
     ///
-    /// This error occurs when trying to set more than 19 validators in the validator set.
+    /// This error occurs when trying to set more than 10 validators in the validator set.
     /// The limit is imposed by Solana's transaction signing constraints.
     #[msg("Maximum number of validators exceeded")]
     MaxValidatorsExceeded,

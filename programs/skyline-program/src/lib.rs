@@ -21,7 +21,7 @@
 //!
 //! ## Security Model
 //!
-//! - Validator set requires minimum 4 and maximum 19 validators
+//! - Validator set requires minimum 4 and maximum 10 validators
 //! - Consensus threshold is automatically set to 2/3 of validators (rounded up)
 //! - All critical operations require validator signatures meeting the threshold
 //! - Validator set changes require approval from current validator set
@@ -61,10 +61,10 @@ pub mod skyline_program {
     ///
     /// # Arguments
     /// * `ctx` - The context containing accounts for initialization
-    /// * `validators` - Vector of validator public keys (4-19 validators required)
+    /// * `validators` - Vector of validator public keys (4-10 validators required)
     ///
     /// # Errors
-    /// * `MaxValidatorsExceeded` - If more than 19 validators are provided
+    /// * `MaxValidatorsExceeded` - If more than 10 validators are provided
     /// * `MinValidatorsNotMet` - If fewer than 4 validators are provided
     /// * `ValidatorsNotUnique` - If duplicate validators are provided
     pub fn initialize(ctx: Context<Initialize>, validators: Vec<Pubkey>) -> Result<()> {
@@ -115,14 +115,14 @@ pub mod skyline_program {
     ///
     /// This instruction allows changing the set of validators that control bridge operations.
     /// Requires approval from the current validator set and maintains the same validation rules
-    /// as initialization (unique validators, 4-19 count).
+    /// as initialization (unique validators, 4-10 count).
     ///
     /// # Arguments
     /// * `ctx` - The context containing accounts for validator set change
     /// * `new_validator_set` - Vector of new validator public keys
     ///
     /// # Errors
-    /// * `MaxValidatorsExceeded` - If more than 19 validators are provided
+    /// * `MaxValidatorsExceeded` - If more than 10 validators are provided
     /// * `MinValidatorsNotMet` - If fewer than 4 validators are provided
     /// * `ValidatorsNotUnique` - If duplicate validators are provided
     /// * `NotEnoughSigners` - If insufficient current validators have signed

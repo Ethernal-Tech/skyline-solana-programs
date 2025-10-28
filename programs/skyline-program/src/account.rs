@@ -14,7 +14,7 @@ use crate::*;
 ///
 /// # Fields
 ///
-/// * `signers` - Vector of validator public keys (max 19 validators)
+/// * `signers` - Vector of validator public keys (max 10 validators)
 /// * `threshold` - Number of signatures required for consensus (automatically set to 2/3)
 /// * `bump` - Bump seed for the PDA derivation
 #[account]
