@@ -54,10 +54,10 @@ describe("skyline-program", () => {
       }
     });
 
-    it("provided more (20) than MAX_VALIDATORS (19) validators", async () => {
+    it("provided more (11) than MAX_VALIDATORS (10) validators", async () => {
       try {
         await program.methods
-          .initialize(validators.slice(0, 20).map((v) => v.publicKey))
+          .initialize(validators.slice(0, 11).map((v) => v.publicKey))
           .accounts({
             signer: owner.publicKey,
           })
@@ -742,34 +742,31 @@ describe("skyline-program", () => {
       }
     });
 
-    // Error: Transaction too large: 1534 > 1232 !!!
-    //
-    // it("provided new validator set contains more validators (20) than MAX_VALIDATORS (19)", async () => {
-    //   const remainingAccounts = validators.slice(0, 7).map((v) => ({
-    //     pubkey: v.publicKey,
-    //     isSigner: true,
-    //     isWritable: false,
-    //   }));
+    it("provided new validator set contains more validators (11) than MAX_VALIDATORS (10)", async () => {
+      const remainingAccounts = validators.slice(0, 3).map((v) => ({
+        pubkey: v.publicKey,
+        isSigner: true,
+        isWritable: false,
+      }));
 
-    //   try {
-    //     await program.methods
-    //       .validatorSetChange(validators.slice(0, 20).map((v) => v.publicKey))
-    //       .accounts({
-    //         signer: owner.publicKey,
-    //         validatorSet: vsPDA,
-    //       })
-    //       .remainingAccounts(remainingAccounts)
-    //       .signers(validators.slice(0, 7))
-    //       .rpc();
+      try {
+        await program.methods
+          .validatorSetChange(validators.slice(0, 11).map((v) => v.publicKey))
+          .accounts({
+            signer: owner.publicKey,
+            validatorSet: vsPDA,
+          })
+          .remainingAccounts(remainingAccounts)
+          .signers(validators.slice(0, 3))
+          .rpc();
 
-    //     assert.fail(
-    //       "Transaction should have failed with MaxValidatorsExceeded error"
-    //     );
-    //   } catch (e) {
-    //     console.log(e);
-    //     expect(e.error.errorCode.code).to.equal("MaxValidatorsExceeded");
-    //   }
-    // });
+        assert.fail(
+          "Transaction should have failed with MaxValidatorsExceeded error"
+        );
+      } catch (e) {
+        expect(e.error.errorCode.code).to.equal("MaxValidatorsExceeded");
+      }
+    });
 
     it("provided new validator set contains duplicates", async () => {
       const newValidators = [
