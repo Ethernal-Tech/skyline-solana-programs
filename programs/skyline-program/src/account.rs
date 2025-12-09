@@ -29,6 +29,19 @@ pub struct ValidatorSet {
     pub threshold: u8,
     /// Bump seed for the Program Derived Address (PDA)
     pub bump: u8,
+    /// Last batch id
+    pub last_batch_id: u64,
+    /// Transaction in progress
+    pub transaction_in_progress: bool,
+}
+
+#[account]
+#[derive(InitSpace)]
+pub struct Vault {
+    /// Vault address
+    pub address: Pubkey,
+    /// Vault bump
+    pub bump: u8,
 }
 
 /// Represents a cross-chain bridging request.
@@ -61,4 +74,24 @@ pub struct BridgingRequest {
     pub destination_chain: u8,
     /// Public key of the token mint being bridged
     pub mint_token: Pubkey,
+}
+
+#[account]
+#[derive(InitSpace)]
+pub struct BridgingTransaction {
+    /// The ID of the transaction
+    pub id: Pubkey,
+    /// The amount of tokens that were bridged
+    pub amount: u64,
+    /// The receiver's address
+    pub receiver: Pubkey,
+    /// The public key of the token mint being bridged
+    pub mint_token: Pubkey,
+    /// Signers that have approved the transaction
+    #[max_len(MAX_VALIDATORS)]
+    pub signers: Vec<Pubkey>,
+    /// Bump
+    pub bump: u8,
+    /// Batch ID
+    pub batch_id: u64,
 }

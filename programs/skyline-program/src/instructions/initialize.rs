@@ -30,6 +30,10 @@ pub struct Initialize<'info> {
     )]
     pub validator_set: Account<'info, ValidatorSet>,
 
+    /// The vault account
+    #[account(init, payer = signer, space = Vault::INIT_SPACE + DISC, seeds = [VAULT_SEED], bump)]
+    pub vault: Account<'info, Vault>,
+
     /// The system program for account creation
     pub system_program: Program<'info, System>,
 }
@@ -54,8 +58,9 @@ impl<'info> Initialize<'info> {
     /// * Validates that all validators are unique (no duplicates)
     /// * Automatically calculates the consensus threshold as 2/3 of validators (rounded up)
     /// * Stores the bump seed for PDA derivation
-    pub fn process_instruction(ctx: Context<Self>, validators: Vec<Pubkey>) -> Result<()> {
+    pub fn process_instruction(ctx: Context<Self>, validators: Vec<Pubkey>, last_id: u64) -> Result<()> {
         let validator_set = &mut ctx.accounts.validator_set;
+        let vault = &mut ctx.accounts.vault;
 
         // Check for duplicate validators by sorting and deduplicating
         let mut validators_copy = validators.clone();
@@ -72,6 +77,14 @@ impl<'info> Initialize<'info> {
         
         // Store the bump seed for PDA derivation
         validator_set.bump = ctx.bumps.validator_set;
+
+        // Store the last id
+        validator_set.last_batch_id = last_id;
+
+        // Store the vault address
+        vault.address = vault.key();
+        vault.bump = ctx.bumps.vault;
+
 
         Ok(())
     }

@@ -56,4 +56,28 @@ pub enum CustomError {
     /// to cover the bridging amount.
     #[msg("Insufficient funds in the account")]
     InsufficientFunds,
+
+    /// Transaction in progress.
+    ///
+    /// This error occurs when a transaction is already in progress.
+    #[msg("Transaction in progress")]
+    TransactionInProgress,
+
+    /// Invalid receiver provided.
+    ///
+    /// This error occurs when a receiver is the same as the payer.
+    #[msg("Invalid receiver provided")]
+    InvalidReceiver,
+
+    /// Invalid mint token provided.
+    ///
+    /// This error occurs when a mint token is the same as the payer's mint token.
+    #[msg("Invalid mint token provided")]
+    InvalidMintToken,
+
+    /// No signers provided.
+    ///
+    /// This error occurs when no signers are provided.
+    #[msg("No signers provided")]
+    NoSignersProvided,
 }

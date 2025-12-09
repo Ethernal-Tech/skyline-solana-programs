@@ -48,6 +48,9 @@ pub use error::*;
 pub mod instructions;
 pub use instructions::*;
 
+pub mod events;
+pub use events::*;
+
 declare_id!("9r3WeS5AWMXnnt1vepkq8RkaTsR5RYtv7cgBRZ3fs6q3");
 
 #[program]
@@ -67,8 +70,8 @@ pub mod skyline_program {
     /// * `MaxValidatorsExceeded` - If more than 10 validators are provided
     /// * `MinValidatorsNotMet` - If fewer than 4 validators are provided
     /// * `ValidatorsNotUnique` - If duplicate validators are provided
-    pub fn initialize(ctx: Context<Initialize>, validators: Vec<Pubkey>) -> Result<()> {
-        Initialize::process_instruction(ctx, validators)
+    pub fn initialize(ctx: Context<Initialize>, validators: Vec<Pubkey>, last_id: u64) -> Result<()> {
+        Initialize::process_instruction(ctx, validators, last_id)
     }
 
     /// Mint tokens to a recipient on the destination chain.

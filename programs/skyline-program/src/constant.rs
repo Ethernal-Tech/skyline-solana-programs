@@ -35,3 +35,13 @@ pub const BRIDGING_REQUEST_SEED: &[u8] = b"bridging_request";
 /// With fewer than 4 validators, the system would be vulnerable to
 /// various attack vectors and lack proper consensus mechanisms.
 pub const MIN_VALIDATORS: usize = 4;
+
+/// Seed string used to derive BridgingTransaction Program Derived Addresses (PDAs).
+///    
+/// This seed is combined with the transaction id to create a unique address for the bridging transaction account.
+pub const BRIDGING_TRANSACTION_SEED: &[u8] = b"bridging_transaction";
+
+/// Seed string used to derive Vault Program Derived Addresses (PDAs).
+///
+/// This seed is combined with the vault address to create a unique address for the vault account.
+pub const VAULT_SEED: &[u8] = b"vault";

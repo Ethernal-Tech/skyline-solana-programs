@@ -23,3 +23,15 @@ pub use validator_set_change::*;
 /// Close bridging request accounts.
 pub mod close_requests;
 pub use close_requests::*;
+
+/// Create a bridging transaction.
+pub mod create_transaction;
+pub use create_transaction::*;
+
+/// Approve a bridging transaction.
+pub mod approve_transaction;
+pub use approve_transaction::*;
+
+/// Execute a bridging transaction.
+pub mod execute_transaction;
+pub use execute_transaction::*;

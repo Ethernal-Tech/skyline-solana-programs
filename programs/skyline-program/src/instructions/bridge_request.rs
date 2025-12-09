@@ -6,7 +6,10 @@
 //! the destination chain.
 
 use crate::*;
-use anchor_spl::token::{self, Burn, Mint, TokenAccount};
+use anchor_spl::{
+    associated_token,
+    token::{self, Mint, TokenAccount, Transfer},
+};
 
 /// Account structure for the bridge_request instruction.
 ///
@@ -18,7 +21,7 @@ pub struct BridgeRequest<'info> {
     /// The user initiating the bridge request
     #[account(mut)]
     pub signer: Signer<'info>,
-    
+
     /// The user's associated token account for the tokens being bridged
     #[account(
         mut,
@@ -26,6 +29,15 @@ pub struct BridgeRequest<'info> {
         token::authority = signer
     )]
     pub signers_ata: Account<'info, TokenAccount>,
+
+    /// The vault account
+    #[account(mut, seeds = [VAULT_SEED], bump = vault.bump)]
+    pub vault: Account<'info, Vault>,
+
+    /// The vault associated token account for the tokens being bridged
+    /// CHECK: This account is validated through the associated token account creation
+    #[account(mut)]
+    pub vault_ata: UncheckedAccount<'info>,
 
     /// The bridging request account to be created
     #[account(init,
@@ -39,12 +51,15 @@ pub struct BridgeRequest<'info> {
     /// The token mint for the tokens being bridged
     #[account(mut)]
     pub mint: Account<'info, Mint>,
-    
+
     /// The token program for burning operations
     pub token_program: Program<'info, anchor_spl::token::Token>,
-    
+
     /// The system program for account creation
     pub system_program: Program<'info, System>,
+
+    /// The associated token program for creating token accounts
+    pub associated_token_program: Program<'info, associated_token::AssociatedToken>,
 }
 
 impl<'info> BridgeRequest<'info> {
@@ -81,20 +96,39 @@ impl<'info> BridgeRequest<'info> {
         let from = &ctx.accounts.signers_ata;
         let signer = &ctx.accounts.signer;
         let token_program = &ctx.accounts.token_program;
-        
+        let vault = &ctx.accounts.vault;
+        let vault_ata = &ctx.accounts.vault_ata;
+        let associated_token_program = &ctx.accounts.associated_token_program;
+
         // Validate that the user has sufficient tokens to bridge
         require!(from.amount >= amount, CustomError::InsufficientFunds);
 
+        if vault_ata.data_is_empty() {
+            let cpi_context = CpiContext::new(
+                associated_token_program.to_account_info(),
+                associated_token::Create {
+                    payer: signer.to_account_info(),
+                    associated_token: vault_ata.to_account_info(),
+                    authority: vault.to_account_info(),
+                    mint: mint.to_account_info(),
+                    system_program: ctx.accounts.system_program.to_account_info(),
+                    token_program: token_program.to_account_info(),
+                },
+            );
+
+            associated_token::create(cpi_context)?;
+        }
+
         // Prepare the burn instruction
-        let cpi_accounts = Burn {
-            mint: mint.to_account_info(),
+        let cpi_accounts = Transfer {
             from: from.to_account_info(),
+            to: vault_ata.to_account_info(),
             authority: signer.to_account_info(),
         };
 
         // Execute the token burn
         let cpi_context = CpiContext::new(token_program.to_account_info(), cpi_accounts);
-        token::burn(cpi_context, amount)?;
+        token::transfer(cpi_context, amount)?;
 
         // Create and populate the bridging request account
         let bridging_request = &mut ctx.accounts.bridging_request;
