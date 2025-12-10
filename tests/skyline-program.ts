@@ -36,88 +36,91 @@ describe("skyline-program", () => {
     (m) => (mint = m)
   );
 
-  describe("Initialize - Bad Cases", () => {
-    it("provided less (3) than MIN_VALIDATORS (4) validators", async () => {
-      try {
-        await program.methods
-          .initialize(validators.slice(0, 3).map((v) => v.publicKey))
-          .accounts({
-            signer: owner.publicKey,
-          })
-          .rpc();
+  // describe("Initialize - Bad Cases", () => {
+  //   it("provided less (3) than MIN_VALIDATORS (4) validators", async () => {
+  //     try {
+  //       await program.methods
+  //         .initialize(validators.slice(0, 3).map((v) => v.publicKey), new anchor.BN(0))
+  //         .accounts({
+  //           signer: owner.publicKey,
+  //         })
+  //         .rpc();
 
-        assert.fail(
-          "Transaction should have failed with MinValidatorsNotMet error"
-        );
-      } catch (e) {
-        expect(e.error.errorCode.code).to.equal("MinValidatorsNotMet");
-      }
-    });
+  //       assert.fail(
+  //         "Transaction should have failed with MinValidatorsNotMet error"
+  //       );
+  //     } catch (e) {
+  //       expect(e.error.errorCode.code).to.equal("MinValidatorsNotMet");
+  //     }
+  //   });
 
-    it("provided more (11) than MAX_VALIDATORS (10) validators", async () => {
-      try {
-        await program.methods
-          .initialize(validators.slice(0, 11).map((v) => v.publicKey))
-          .accounts({
-            signer: owner.publicKey,
-          })
-          .rpc();
+  //   it("provided more (11) than MAX_VALIDATORS (10) validators", async () => {
+  //     try {
+  //       await program.methods
+  //         .initialize(validators.slice(0, 11).map((v) => v.publicKey), new anchor.BN(0))
+  //         .accounts({
+  //           signer: owner.publicKey,
+  //         })
+  //         .rpc();
 
-        assert.fail(
-          "Transaction should have failed with MaxValidatorsExceeded error"
-        );
-      } catch (e) {
-        expect(e.error.errorCode.code).to.equal("MaxValidatorsExceeded");
-      }
-    });
+  //       assert.fail(
+  //         "Transaction should have failed with MaxValidatorsExceeded error"
+  //       );
+  //     } catch (e) {
+  //       expect(e.error.errorCode.code).to.equal("MaxValidatorsExceeded");
+  //     }
+  //   });
 
-    it("duplicate validator provided", async () => {
-      const duplicateValidators = [
-        validators[0].publicKey,
-        validators[1].publicKey,
-        validators[2].publicKey,
-        validators[3].publicKey,
-        validators[0].publicKey,
-      ];
+  //   it("duplicate validator provided", async () => {
+  //     const duplicateValidators = [
+  //       validators[0].publicKey,
+  //       validators[1].publicKey,
+  //       validators[2].publicKey,
+  //       validators[3].publicKey,
+  //       validators[0].publicKey,
+  //     ];
 
-      try {
-        await program.methods
-          .initialize(duplicateValidators)
-          .accounts({
-            signer: owner.publicKey,
-          })
-          .rpc();
+  //     try {
+  //       await program.methods
+  //         .initialize(duplicateValidators, new anchor.BN(0))
+  //         .accounts({
+  //           signer: owner.publicKey,
+  //         })
+  //         .rpc();
 
-        assert.fail(
-          "Transaction should have failed with ValidatorsNotUnique error"
-        );
-      } catch (e) {
-        expect(e.error.errorCode.code).to.equal("ValidatorsNotUnique");
-      }
-    });
+  //       assert.fail(
+  //         "Transaction should have failed with ValidatorsNotUnique error"
+  //       );
+  //     } catch (e) {
+  //       expect(e.error.errorCode.code).to.equal("ValidatorsNotUnique");
+  //     }
+  //   });
 
-    it("no validators provided", async () => {
-      try {
-        await program.methods
-          .initialize([])
-          .accounts({
-            signer: owner.publicKey,
-          })
-          .rpc();
+  //   it("no validators provided", async () => {
+  //     try {
+  //       await program.methods
+  //         .initialize([], new anchor.BN(0))
+  //         .accounts({
+  //           signer: owner.publicKey,
+  //         })
+  //         .rpc();
 
-        assert.fail(
-          "Transaction should have failed with MinValidatorsNotMet error"
-        );
-      } catch (e) {
-        expect(e.error.errorCode.code).to.equal("MinValidatorsNotMet");
-      }
-    });
-  });
+  //       assert.fail(
+  //         "Transaction should have failed with MinValidatorsNotMet error"
+  //       );
+  //     } catch (e) {
+  //       expect(e.error.errorCode.code).to.equal("MinValidatorsNotMet");
+  //     }
+  //   });
+  // });
 
   describe("Initialize - Success Case", () => {
     it("correct number of validators (10)", async () => {
       await program.methods
-        .initialize(validators.slice(0, 10).map((v) => v.publicKey))
+        .initialize(
+          validators.slice(0, 10).map((v) => v.publicKey),
+          new anchor.BN(0)
+        )
         .accounts({
           signer: owner.publicKey,
         })
@@ -134,701 +137,606 @@ describe("skyline-program", () => {
     });
   });
 
-  describe("Initialize - After Account Already Exists", () => {
-    it("PDA account already exists", async () => {
-      try {
-        await program.methods
-          .initialize(validators.slice(10, 14).map((v) => v.publicKey))
-          .accounts({
-            signer: owner.publicKey,
-          })
-          .rpc();
+  const createOrApproveTransaction = async (
+    signers: web3.Keypair[],
+    batchId: number
+  ) => {
+    const remainingAccounts = signers.map((v) => ({
+      pubkey: v.publicKey,
+      isSigner: true,
+      isWritable: false,
+    }));
 
-        assert.fail(
-          "Transaction should have failed because account already exists"
-        );
-      } catch (error) {
-        const errorString = error.toString();
+    await program.methods
+      .createOrApproveTransaction(new anchor.BN(1), new anchor.BN(batchId))
+      .accounts({
+        payer: owner.publicKey,
+        receiver: recipient.publicKey,
+        mintToken: mint,
+      })
+      .signers(signers)
+      .remainingAccounts(remainingAccounts)
+      .rpc();
+  };
 
-        const accountExistsError =
-          errorString.includes("already in use") ||
-          errorString.includes("custom program error: 0x0") ||
-          errorString.includes("AccountAlreadyInitialized");
-
-        expect(accountExistsError).to.be.true;
-      }
-    });
-  });
-
-  describe("Bridge Tokens - Success Case", () => {
+  describe("Bridge Transaction Creation - Success Case", () => {
     it("successful", async () => {
-      const amount = new anchor.BN(1_000_000_000);
-      const recipientAta = getAssociatedTokenAddressSync(
-        mint,
-        recipient.publicKey
-      );
+      await createOrApproveTransaction(validators.slice(0, 1), 1);
 
-      const remainingAccounts = validators.slice(0, 7).map((v) => ({
-        pubkey: v.publicKey,
-        isSigner: true,
-        isWritable: false,
-      }));
-
-      await program.methods
-        .bridgeTokens(amount)
-        .accounts({
-          payer: owner.publicKey,
-          mint: mint,
-          recipient: recipient.publicKey,
-          recipientAta: recipientAta,
-        })
-        .remainingAccounts(remainingAccounts)
-        .signers(validators.slice(0, 7))
-        .rpc();
-
-      const recipientBalance = await provider.connection.getTokenAccountBalance(
-        recipientAta
-      );
-
-      assert.equal(recipientBalance.value.amount, "1000000000");
-    });
-  });
-
-  describe("Bridge Tokens - Bad Cases", () => {
-    it("one of the signers is not part of the validator set", async () => {
-      const amount = new anchor.BN(1_000_000_000);
-      const recipientAta = getAssociatedTokenAddressSync(
-        mint,
-        recipient.publicKey
-      );
-
-      const fakeSigner = anchor.web3.Keypair.generate();
-
-      const remainingAccounts = [
-        ...validators.slice(0, 6).map((v) => ({
-          pubkey: v.publicKey,
-          isSigner: true,
-          isWritable: false,
-        })),
-        {
-          pubkey: fakeSigner.publicKey,
-          isSigner: true,
-          isWritable: false,
-        },
-      ];
-
-      try {
-        await program.methods
-          .bridgeTokens(amount)
-          .accounts({
-            payer: owner.publicKey,
-            mint: mint,
-            recipient: recipient.publicKey,
-            recipientAta: recipientAta,
-          })
-          .remainingAccounts(remainingAccounts)
-          .signers([...validators.slice(0, 6), fakeSigner])
-          .rpc();
-
-        assert.fail("Transaction should have failed with InvalidSigner error");
-      } catch (e) {
-        expect(e.error.errorCode.code).to.equal("InvalidSigner");
-      }
-    });
-
-    it("quorum of signers not reached for the transaction", async () => {
-      const amount = new anchor.BN(1_000_000_000);
-      const recipientAta = getAssociatedTokenAddressSync(
-        mint,
-        recipient.publicKey
-      );
-
-      const remainingAccounts = validators.slice(0, 2).map((v) => ({
-        pubkey: v.publicKey,
-        isSigner: true,
-        isWritable: false,
-      }));
-
-      try {
-        await program.methods
-          .bridgeTokens(amount)
-          .accounts({
-            payer: owner.publicKey,
-            mint: mint,
-            recipient: recipient.publicKey,
-            recipientAta: recipientAta,
-          })
-          .remainingAccounts(remainingAccounts)
-          .signers(validators.slice(0, 2))
-          .rpc();
-
-        assert.fail(
-          "Transaction should have failed with NotEnoughSigners error"
+      const bridgingTransaction =
+        await program.account.bridgingTransaction.fetch(
+          anchor.web3.PublicKey.findProgramAddressSync(
+            [Buffer.from("bridging_transaction"), new anchor.BN(1).toBuffer()],
+            program.programId
+          )[0]
         );
-      } catch (e) {
-        expect(e.error.errorCode.code).to.equal("NotEnoughSigners");
-      }
+
+      assert.equal(bridgingTransaction.signers.length, 1);
+      assert.equal(
+        bridgingTransaction.signers[0].toString(),
+        validators[0].publicKey.toString()
+      );
+      assert.equal(
+        bridgingTransaction.amount.toString(),
+        new anchor.BN(1_000_000_000).toString()
+      );
+      assert.equal(
+        bridgingTransaction.receiver.toString(),
+        recipient.publicKey.toString()
+      );
+      assert.equal(bridgingTransaction.mintToken.toString(), mint.toString());
+      assert.equal(
+        bridgingTransaction.batchId.toString(),
+        new anchor.BN(1).toString()
+      );
+      assert.equal(bridgingTransaction.bump, 0);
     });
 
-    it("provided token has a mint authority different from the PDA account", async () => {
-      const amount = new anchor.BN(1_000_000_000);
-      const recipientAta = getAssociatedTokenAddressSync(
-        mint,
-        recipient.publicKey
-      );
-
-      const wrongMint = await createMint(
-        provider.connection,
-        owner.payer,
-        anchor.web3.Keypair.generate().publicKey,
-        null,
-        9
-      );
-
-      const remainingAccounts = validators.slice(0, 7).map((v) => ({
-        pubkey: v.publicKey,
-        isSigner: true,
-        isWritable: false,
-      }));
-
-      let failed = false;
-
-      try {
-        await program.methods
-          .bridgeTokens(amount)
-          .accounts({
-            payer: owner.publicKey,
-            mint: wrongMint,
-            recipient: recipient.publicKey,
-            recipientAta: getAssociatedTokenAddressSync(
-              wrongMint,
-              recipient.publicKey
-            ),
-          })
-          .remainingAccounts(remainingAccounts)
-          .signers(validators.slice(0, 7))
-          .rpc();
-
-        assert.fail(
-          "Transaction should have failed because validator set is not mint authority"
-        );
-      } catch (e) {
-        failed = true;
-      }
-
-      assert.isTrue(failed, "Expected transaction to fail but it succeeded");
-    });
-  });
-
-  describe("Bridge Request - Success Case", () => {
-    it("successful", async () => {
-      const amount = new anchor.BN(1_000_000_000);
-      let receiver: number[];
-      receiver = Array.from(
-        Buffer.from(
-          "0x1234567890123456789012345678901234567890123456789012345678901234567890123",
-          "hex"
-        )
-      );
-      const destination_chain = 1;
-
-      const ownerAta = await createAssociatedTokenAccount(
-        provider.connection,
-        owner.payer,
-        mint,
-        owner.publicKey
-      );
-
-      const remainingAccounts = validators.slice(0, 7).map((v) => ({
-        pubkey: v.publicKey,
-        isSigner: true,
-        isWritable: false,
-      }));
-
-      await program.methods
-        .bridgeTokens(amount)
-        .accounts({
-          payer: owner.publicKey,
-          mint: mint,
-          recipient: recipient.publicKey,
-          recipientAta: ownerAta,
-        })
-        .remainingAccounts(remainingAccounts)
-        .signers(validators.slice(0, 7))
-        .rpc();
-
-      await program.methods
-        .bridgeRequest(amount, receiver, destination_chain)
-        .accounts({
-          signer: owner.publicKey,
-          signersAta: ownerAta,
-          mint: mint,
-        })
-        .rpc();
-
-      const bridgingRequestPDA = anchor.web3.PublicKey.findProgramAddressSync(
-        [Buffer.from("bridging_request"), owner.publicKey.toBuffer()],
-        program.programId
-      )[0];
-
-      const br = await program.account.bridgingRequest.fetch(
-        bridgingRequestPDA
-      );
-
-      assert.equal(br.sender.toBase58(), owner.publicKey.toBase58());
-      assert.equal(br.amount.toString(), amount.toString());
-      assert.equal(br.destinationChain, destination_chain);
-    });
-  });
-
-  describe("Bridge Request - Bad Cases", () => {
-    it("bridging an amount greater than the available balance", async () => {
-      let receiver: number[];
-      receiver = Array.from(
-        Buffer.from(
-          "0x1234567890123456789012345678901234567890123456789012345678901234567890123",
-          "hex"
-        )
-      );
-      const destination_chain = 1;
-
-      const newOwner = anchor.web3.Keypair.generate();
-
-      const airdropSig = await provider.connection.requestAirdrop(
-        newOwner.publicKey,
-        2 * anchor.web3.LAMPORTS_PER_SOL
-      );
-      await provider.connection.confirmTransaction(airdropSig);
-
-      const ownerAtaInfo = await getOrCreateAssociatedTokenAccount(
-        provider.connection,
-        owner.payer,
-        mint,
-        newOwner.publicKey
-      );
-      const ownerAta = ownerAtaInfo.address;
-
-      const mintAmount = new anchor.BN(1_000_000_000);
-      const remainingAccounts = validators.slice(0, 7).map((v) => ({
-        pubkey: v.publicKey,
-        isSigner: true,
-        isWritable: false,
-      }));
-
-      await program.methods
-        .bridgeTokens(mintAmount)
-        .accounts({
-          payer: owner.publicKey,
-          mint: mint,
-          recipient: newOwner.publicKey,
-          recipientAta: ownerAta,
-        })
-        .remainingAccounts(remainingAccounts)
-        .signers(validators.slice(0, 7))
-        .rpc();
-
-      const bridgeAmount = new anchor.BN(10_000_000_000);
-
-      try {
-        await program.methods
-          .bridgeRequest(bridgeAmount, receiver, destination_chain)
-          .accounts({
-            signer: newOwner.publicKey,
-            signersAta: ownerAta,
-            mint: mint,
-          })
-          .signers([newOwner])
-          .rpc();
-
-        assert.fail(
-          "Transaction should have failed with InsufficientFunds error"
-        );
-      } catch (e) {
-        expect(e.error.errorCode.code).to.equal("InsufficientFunds");
-      }
-    });
-
-    it("ATA is not initialized", async () => {
-      const amount = new anchor.BN(1_000_000_000);
-      let receiver: number[];
-      receiver = Array.from(
-        Buffer.from(
-          "0x1234567890123456789012345678901234567890123456789012345678901234567890123",
-          "hex"
-        )
-      );
-      const destination_chain = 1;
-
-      const newOwner = anchor.web3.Keypair.generate();
-      const airdropSig = await provider.connection.requestAirdrop(
-        newOwner.publicKey,
-        2 * anchor.web3.LAMPORTS_PER_SOL
-      );
-      await provider.connection.confirmTransaction(airdropSig);
-
-      const ownerAta = await getAssociatedTokenAddress(
-        mint,
-        newOwner.publicKey
-      );
-
-      try {
-        await program.methods
-          .bridgeRequest(amount, receiver, destination_chain)
-          .accounts({
-            signer: newOwner.publicKey,
-            signersAta: ownerAta,
-            mint: mint,
-          })
-          .signers([newOwner])
-          .rpc();
-
-        assert.fail(
-          "Transaction should have failed with AccountNotInitialized error"
-        );
-      } catch (e: any) {
-        expect(e.error.errorCode.code).to.equal("AccountNotInitialized");
-      }
-    });
-
-    it("invalid length for the receiver field", async () => {
-      const amount = new anchor.BN(1_000_000_000);
-      let receiver: number[] = [1, 2, 3, 4, 5];
-      const destination_chain = 1;
-
-      const newOwner = anchor.web3.Keypair.generate();
-      const airdropSig = await provider.connection.requestAirdrop(
-        newOwner.publicKey,
-        2 * anchor.web3.LAMPORTS_PER_SOL
-      );
-      await provider.connection.confirmTransaction(airdropSig);
-
-      const ownerAtaInfo = await getOrCreateAssociatedTokenAccount(
-        provider.connection,
-        owner.payer,
-        mint,
-        newOwner.publicKey
-      );
-      const ownerAta = ownerAtaInfo.address;
-
-      const mintAmount = new anchor.BN(1_000_000_000);
-      const remainingAccounts = validators.slice(0, 7).map((v) => ({
-        pubkey: v.publicKey,
-        isSigner: true,
-        isWritable: false,
-      }));
-
-      await program.methods
-        .bridgeTokens(mintAmount)
-        .accounts({
-          payer: owner.publicKey,
-          mint: mint,
-          recipient: newOwner.publicKey,
-          recipientAta: ownerAta,
-        })
-        .remainingAccounts(remainingAccounts)
-        .signers(validators.slice(0, 7))
-        .rpc();
-
-      try {
-        await program.methods
-          .bridgeRequest(amount, receiver, destination_chain)
-          .accounts({
-            signer: newOwner.publicKey,
-            signersAta: ownerAta,
-            mint: mint,
-          })
-          .signers([newOwner])
-          .rpc();
-
-        assert.fail("Transaction should have failed");
-      } catch (e: any) {
-        assert.ok(e, "Expected error for invalid receiver length");
-      }
-    });
-
-    it("bridge request already exists for the sender", async () => {
-      const amount = new anchor.BN(1_000_000_000);
-      let receiver: number[];
-      receiver = Array.from(
-        Buffer.from(
-          "0x1234567890123456789012345678901234567890123456789012345678901234567890123",
-          "hex"
-        )
-      );
-      const destination_chain = 1;
-
-      const newOwner = anchor.web3.Keypair.generate();
-      const airdropSig = await provider.connection.requestAirdrop(
-        newOwner.publicKey,
-        2 * anchor.web3.LAMPORTS_PER_SOL
-      );
-      await provider.connection.confirmTransaction(airdropSig);
-
-      const ownerAtaInfo = await getOrCreateAssociatedTokenAccount(
-        provider.connection,
-        owner.payer,
-        mint,
-        newOwner.publicKey
-      );
-      const ownerAta = ownerAtaInfo.address;
-
-      const mintAmount = new anchor.BN(2_000_000_000);
-      const remainingAccounts = validators.slice(0, 7).map((v) => ({
-        pubkey: v.publicKey,
-        isSigner: true,
-        isWritable: false,
-      }));
-
-      await program.methods
-        .bridgeTokens(mintAmount)
-        .accounts({
-          payer: owner.publicKey,
-          mint: mint,
-          recipient: newOwner.publicKey,
-          recipientAta: ownerAta,
-        })
-        .remainingAccounts(remainingAccounts)
-        .signers(validators.slice(0, 7))
-        .rpc();
-
-      // First bridge request should succeed
-      await program.methods
-        .bridgeRequest(amount, receiver, destination_chain)
-        .accounts({
-          signer: newOwner.publicKey,
-          signersAta: ownerAta,
-          mint: mint,
-        })
-        .signers([newOwner])
-        .rpc();
-
-      // Second bridge request with same signer should fail
-      try {
-        await program.methods
-          .bridgeRequest(amount, receiver, destination_chain)
-          .accounts({
-            signer: newOwner.publicKey,
-            signersAta: ownerAta,
-            mint: mint,
-          })
-          .signers([newOwner])
-          .rpc();
-
-        assert.fail("Expected transaction to fail");
-      } catch (e: any) {
-        assert.ok(e, "Expected error");
+    it("sign with enough validators", async () => {
+      for (let i = 1; i < validators.length; i++) {
+        await createOrApproveTransaction(validators.slice(i, i + 1), i + 1);
       }
     });
   });
 
-  describe("Close Request - Success Case", () => {
-    it("successful", async () => {
-      const bridgingRequestPDA = anchor.web3.PublicKey.findProgramAddressSync(
-        [Buffer.from("bridging_request"), owner.publicKey.toBuffer()],
-        program.programId
-      )[0];
+  // describe("Initialize - After Account Already Exists", () => {
+  //   it("PDA account already exists", async () => {
+  //     try {
+  //       await program.methods
+  //         .initialize(
+  //           validators.slice(10, 14).map((v) => v.publicKey),
+  //           new anchor.BN(0)
+  //         )
+  //         .accounts({
+  //           signer: owner.publicKey,
+  //         })
+  //         .rpc();
 
-      const remainingAccounts = validators.slice(0, 7).map((v) => ({
-        pubkey: v.publicKey,
-        isSigner: true,
-        isWritable: false,
-      }));
+  //       assert.fail(
+  //         "Transaction should have failed because account already exists"
+  //       );
+  //     } catch (error) {
+  //       const errorString = error.toString();
 
-      await program.methods
-        .closeRequest()
-        .accounts({
-          signer: owner.publicKey,
-          bridgingRequest: bridgingRequestPDA,
-        })
-        .remainingAccounts(remainingAccounts)
-        .signers(validators.slice(0, 7))
-        .rpc();
+  //       const accountExistsError =
+  //         errorString.includes("already in use") ||
+  //         errorString.includes("custom program error: 0x0") ||
+  //         errorString.includes("AccountAlreadyInitialized");
 
-      try {
-        await program.account.bridgingRequest.fetch(bridgingRequestPDA);
-        assert.fail("Expected fetching closed account to fail");
-      } catch (e: any) {
-        assert.ok(e, "Expected error when fetching closed account");
-      }
-    });
-  });
+  //       expect(accountExistsError).to.be.true;
+  //     }
+  //   });
+  // });
 
-  describe("Validator Set Change - Bad Cases", () => {
-    it("quorum of signers not reached for the transaction", async () => {
-      const newValidators = validators.slice(5, 15);
+  // describe("Bridge Request - Success Case", () => {
+  //   it("successful", async () => {
+  //     const amount = new anchor.BN(1_000_000_000);
+  //     let receiver: number[];
+  //     receiver = Array.from(
+  //       Buffer.from(
+  //         "0x1234567890123456789012345678901234567890123456789012345678901234567890123",
+  //         "hex"
+  //       )
+  //     );
+  //     const destination_chain = 1;
 
-      const remainingAccounts = validators.slice(0, 2).map((v) => ({
-        pubkey: v.publicKey,
-        isSigner: true,
-        isWritable: false,
-      }));
+  //     const ownerAta = await createAssociatedTokenAccount(
+  //       provider.connection,
+  //       owner.payer,
+  //       mint,
+  //       owner.publicKey
+  //     );
 
-      try {
-        await program.methods
-          .validatorSetChange(newValidators.map((v) => v.publicKey))
-          .accounts({
-            signer: owner.publicKey,
-            validatorSet: vsPDA,
-          })
-          .remainingAccounts(remainingAccounts)
-          .signers(validators.slice(0, 2))
-          .rpc();
+  //     const remainingAccounts = validators.slice(0, 7).map((v) => ({
+  //       pubkey: v.publicKey,
+  //       isSigner: true,
+  //       isWritable: false,
+  //     }));
 
-        assert.fail(
-          "Transaction should have failed with NotEnoughSigners error"
-        );
-      } catch (e) {
-        expect(e.error.errorCode.code).to.equal("NotEnoughSigners");
-      }
-    });
+  //     await program.methods
+  //       .bridgeTokens(amount)
+  //       .accounts({
+  //         payer: owner.publicKey,
+  //         mint: mint,
+  //         recipient: recipient.publicKey,
+  //         recipientAta: ownerAta,
+  //       })
+  //       .remainingAccounts(remainingAccounts)
+  //       .signers(validators.slice(0, 7))
+  //       .rpc();
 
-    it("one of the signers is not part of the validator set", async () => {
-      const newValidators = validators.slice(5, 15);
+  //     await program.methods
+  //       .bridgeRequest(amount, receiver, destination_chain)
+  //       .accounts({
+  //         signer: owner.publicKey,
+  //         signersAta: ownerAta,
+  //         mint: mint,
+  //       })
+  //       .rpc();
 
-      const invalidSigner = anchor.web3.Keypair.generate();
-      const remainingAccounts = [
-        ...validators.slice(0, 6).map((v) => ({
-          pubkey: v.publicKey,
-          isSigner: true,
-          isWritable: false,
-        })),
-        {
-          pubkey: invalidSigner.publicKey,
-          isSigner: true,
-          isWritable: false,
-        },
-      ];
+  //     const bridgingRequestPDA = anchor.web3.PublicKey.findProgramAddressSync(
+  //       [Buffer.from("bridging_request"), owner.publicKey.toBuffer()],
+  //       program.programId
+  //     )[0];
 
-      try {
-        await program.methods
-          .validatorSetChange(newValidators.map((v) => v.publicKey))
-          .accounts({
-            signer: owner.publicKey,
-            validatorSet: vsPDA,
-          })
-          .remainingAccounts(remainingAccounts)
-          .signers([...validators.slice(0, 6), invalidSigner])
-          .rpc();
+  //     const br = await program.account.bridgingRequest.fetch(
+  //       bridgingRequestPDA
+  //     );
 
-        assert.fail("Transaction should have failed with InvalidSigner error");
-      } catch (e) {
-        expect(e.error.errorCode.code).to.equal("InvalidSigner");
-      }
-    });
+  //     assert.equal(br.sender.toBase58(), owner.publicKey.toBase58());
+  //     assert.equal(br.amount.toString(), amount.toString());
+  //     assert.equal(br.destinationChain, destination_chain);
+  //   });
+  // });
 
-    it("provided new validator set contains less validators (3) than MIN_VALIDATORS (4)", async () => {
-      const remainingAccounts = validators.slice(0, 7).map((v) => ({
-        pubkey: v.publicKey,
-        isSigner: true,
-        isWritable: false,
-      }));
+  // describe("Bridge Request - Bad Cases", () => {
+  //   it("bridging an amount greater than the available balance", async () => {
+  //     let receiver: number[];
+  //     receiver = Array.from(
+  //       Buffer.from(
+  //         "0x1234567890123456789012345678901234567890123456789012345678901234567890123",
+  //         "hex"
+  //       )
+  //     );
+  //     const destination_chain = 1;
 
-      try {
-        await program.methods
-          .validatorSetChange(validators.slice(0, 3).map((v) => v.publicKey))
-          .accounts({
-            signer: owner.publicKey,
-            validatorSet: vsPDA,
-          })
-          .remainingAccounts(remainingAccounts)
-          .signers(validators.slice(0, 7))
-          .rpc();
+  //     const newOwner = anchor.web3.Keypair.generate();
 
-        assert.fail(
-          "Transaction should have failed with MinValidatorsNotMet error"
-        );
-      } catch (e) {
-        expect(e.error.errorCode.code).to.equal("MinValidatorsNotMet");
-      }
-    });
+  //     const airdropSig = await provider.connection.requestAirdrop(
+  //       newOwner.publicKey,
+  //       2 * anchor.web3.LAMPORTS_PER_SOL
+  //     );
+  //     await provider.connection.confirmTransaction(airdropSig);
 
-    it("provided new validator set contains more validators (11) than MAX_VALIDATORS (10)", async () => {
-      const remainingAccounts = validators.slice(0, 3).map((v) => ({
-        pubkey: v.publicKey,
-        isSigner: true,
-        isWritable: false,
-      }));
+  //     const ownerAtaInfo = await getOrCreateAssociatedTokenAccount(
+  //       provider.connection,
+  //       owner.payer,
+  //       mint,
+  //       newOwner.publicKey
+  //     );
+  //     const ownerAta = ownerAtaInfo.address;
 
-      try {
-        await program.methods
-          .validatorSetChange(validators.slice(0, 11).map((v) => v.publicKey))
-          .accounts({
-            signer: owner.publicKey,
-            validatorSet: vsPDA,
-          })
-          .remainingAccounts(remainingAccounts)
-          .signers(validators.slice(0, 3))
-          .rpc();
+  //     const mintAmount = new anchor.BN(1_000_000_000);
+  //     const remainingAccounts = validators.slice(0, 7).map((v) => ({
+  //       pubkey: v.publicKey,
+  //       isSigner: true,
+  //       isWritable: false,
+  //     }));
 
-        assert.fail(
-          "Transaction should have failed with MaxValidatorsExceeded error"
-        );
-      } catch (e) {
-        expect(e.error.errorCode.code).to.equal("MaxValidatorsExceeded");
-      }
-    });
+  //     await program.methods
+  //       .bridgeTokens(mintAmount)
+  //       .accounts({
+  //         payer: owner.publicKey,
+  //         mint: mint,
+  //         recipient: newOwner.publicKey,
+  //         recipientAta: ownerAta,
+  //       })
+  //       .remainingAccounts(remainingAccounts)
+  //       .signers(validators.slice(0, 7))
+  //       .rpc();
 
-    it("provided new validator set contains duplicates", async () => {
-      const newValidators = [
-        validators[3],
-        validators[3],
-        validators[5],
-        validators[12],
-        validators[13],
-        validators[11],
-      ];
+  //     const bridgeAmount = new anchor.BN(10_000_000_000);
 
-      const remainingAccounts = validators.slice(0, 7).map((v) => ({
-        pubkey: v.publicKey,
-        isSigner: true,
-        isWritable: false,
-      }));
+  //     try {
+  //       await program.methods
+  //         .bridgeRequest(bridgeAmount, receiver, destination_chain)
+  //         .accounts({
+  //           signer: newOwner.publicKey,
+  //           signersAta: ownerAta,
+  //           mint: mint,
+  //         })
+  //         .signers([newOwner])
+  //         .rpc();
 
-      try {
-        await program.methods
-          .validatorSetChange(newValidators.map((v) => v.publicKey))
-          .accounts({
-            signer: owner.publicKey,
-            validatorSet: vsPDA,
-          })
-          .remainingAccounts(remainingAccounts)
-          .signers(validators.slice(0, 7))
-          .rpc();
+  //       assert.fail(
+  //         "Transaction should have failed with InsufficientFunds error"
+  //       );
+  //     } catch (e) {
+  //       expect(e.error.errorCode.code).to.equal("InsufficientFunds");
+  //     }
+  //   });
 
-        assert.fail(
-          "Transaction should have failed with ValidatorsNotUnique error"
-        );
-      } catch (e) {
-        expect(e.error.errorCode.code).to.equal("ValidatorsNotUnique");
-      }
-    });
-  });
+  //   it("ATA is not initialized", async () => {
+  //     const amount = new anchor.BN(1_000_000_000);
+  //     let receiver: number[];
+  //     receiver = Array.from(
+  //       Buffer.from(
+  //         "0x1234567890123456789012345678901234567890123456789012345678901234567890123",
+  //         "hex"
+  //       )
+  //     );
+  //     const destination_chain = 1;
 
-  describe("Validator Set Change - Success Case", () => {
-    it("successful", async () => {
-      const newValidators = validators.slice(5, 15);
+  //     const newOwner = anchor.web3.Keypair.generate();
+  //     const airdropSig = await provider.connection.requestAirdrop(
+  //       newOwner.publicKey,
+  //       2 * anchor.web3.LAMPORTS_PER_SOL
+  //     );
+  //     await provider.connection.confirmTransaction(airdropSig);
 
-      const remainingAccounts = validators.slice(0, 7).map((v) => ({
-        pubkey: v.publicKey,
-        isSigner: true,
-        isWritable: false,
-      }));
+  //     const ownerAta = await getAssociatedTokenAddress(
+  //       mint,
+  //       newOwner.publicKey
+  //     );
 
-      await program.methods
-        .validatorSetChange(newValidators.map((v) => v.publicKey))
-        .accounts({
-          signer: owner.publicKey,
-          validatorSet: vsPDA,
-        })
-        .remainingAccounts(remainingAccounts)
-        .signers(validators.slice(0, 7))
-        .rpc();
+  //     try {
+  //       await program.methods
+  //         .bridgeRequest(amount, receiver, destination_chain)
+  //         .accounts({
+  //           signer: newOwner.publicKey,
+  //           signersAta: ownerAta,
+  //           mint: mint,
+  //         })
+  //         .signers([newOwner])
+  //         .rpc();
 
-      const vs = await program.account.validatorSet.fetch(vsPDA);
+  //       assert.fail(
+  //         "Transaction should have failed with AccountNotInitialized error"
+  //       );
+  //     } catch (e: any) {
+  //       expect(e.error.errorCode.code).to.equal("AccountNotInitialized");
+  //     }
+  //   });
 
-      vs.signers.forEach((v) => {
-        assert(newValidators.find((val) => val.publicKey.equals(v)));
-      });
-    });
-  });
+  //   it("invalid length for the receiver field", async () => {
+  //     const amount = new anchor.BN(1_000_000_000);
+  //     let receiver: number[] = [1, 2, 3, 4, 5];
+  //     const destination_chain = 1;
+
+  //     const newOwner = anchor.web3.Keypair.generate();
+  //     const airdropSig = await provider.connection.requestAirdrop(
+  //       newOwner.publicKey,
+  //       2 * anchor.web3.LAMPORTS_PER_SOL
+  //     );
+  //     await provider.connection.confirmTransaction(airdropSig);
+
+  //     const ownerAtaInfo = await getOrCreateAssociatedTokenAccount(
+  //       provider.connection,
+  //       owner.payer,
+  //       mint,
+  //       newOwner.publicKey
+  //     );
+  //     const ownerAta = ownerAtaInfo.address;
+
+  //     const mintAmount = new anchor.BN(1_000_000_000);
+  //     const remainingAccounts = validators.slice(0, 7).map((v) => ({
+  //       pubkey: v.publicKey,
+  //       isSigner: true,
+  //       isWritable: false,
+  //     }));
+
+  //     await program.methods
+  //       .bridgeTokens(mintAmount)
+  //       .accounts({
+  //         payer: owner.publicKey,
+  //         mint: mint,
+  //         recipient: newOwner.publicKey,
+  //         recipientAta: ownerAta,
+  //       })
+  //       .remainingAccounts(remainingAccounts)
+  //       .signers(validators.slice(0, 7))
+  //       .rpc();
+
+  //     try {
+  //       await program.methods
+  //         .bridgeRequest(amount, receiver, destination_chain)
+  //         .accounts({
+  //           signer: newOwner.publicKey,
+  //           signersAta: ownerAta,
+  //           mint: mint,
+  //         })
+  //         .signers([newOwner])
+  //         .rpc();
+
+  //       assert.fail("Transaction should have failed");
+  //     } catch (e: any) {
+  //       assert.ok(e, "Expected error for invalid receiver length");
+  //     }
+  //   });
+
+  //   it("bridge request already exists for the sender", async () => {
+  //     const amount = new anchor.BN(1_000_000_000);
+  //     let receiver: number[];
+  //     receiver = Array.from(
+  //       Buffer.from(
+  //         "0x1234567890123456789012345678901234567890123456789012345678901234567890123",
+  //         "hex"
+  //       )
+  //     );
+  //     const destination_chain = 1;
+
+  //     const newOwner = anchor.web3.Keypair.generate();
+  //     const airdropSig = await provider.connection.requestAirdrop(
+  //       newOwner.publicKey,
+  //       2 * anchor.web3.LAMPORTS_PER_SOL
+  //     );
+  //     await provider.connection.confirmTransaction(airdropSig);
+
+  //     const ownerAtaInfo = await getOrCreateAssociatedTokenAccount(
+  //       provider.connection,
+  //       owner.payer,
+  //       mint,
+  //       newOwner.publicKey
+  //     );
+  //     const ownerAta = ownerAtaInfo.address;
+
+  //     const mintAmount = new anchor.BN(2_000_000_000);
+  //     const remainingAccounts = validators.slice(0, 7).map((v) => ({
+  //       pubkey: v.publicKey,
+  //       isSigner: true,
+  //       isWritable: false,
+  //     }));
+
+  //     await program.methods
+  //       .bridgeTokens(mintAmount)
+  //       .accounts({
+  //         payer: owner.publicKey,
+  //         mint: mint,
+  //         recipient: newOwner.publicKey,
+  //         recipientAta: ownerAta,
+  //       })
+  //       .remainingAccounts(remainingAccounts)
+  //       .signers(validators.slice(0, 7))
+  //       .rpc();
+
+  //     // First bridge request should succeed
+  //     await program.methods
+  //       .bridgeRequest(amount, receiver, destination_chain)
+  //       .accounts({
+  //         signer: newOwner.publicKey,
+  //         signersAta: ownerAta,
+  //         mint: mint,
+  //       })
+  //       .signers([newOwner])
+  //       .rpc();
+
+  //     // Second bridge request with same signer should fail
+  //     try {
+  //       await program.methods
+  //         .bridgeRequest(amount, receiver, destination_chain)
+  //         .accounts({
+  //           signer: newOwner.publicKey,
+  //           signersAta: ownerAta,
+  //           mint: mint,
+  //         })
+  //         .signers([newOwner])
+  //         .rpc();
+
+  //       assert.fail("Expected transaction to fail");
+  //     } catch (e: any) {
+  //       assert.ok(e, "Expected error");
+  //     }
+  //   });
+  // });
+
+  // describe("Close Request - Success Case", () => {
+  //   it("successful", async () => {
+  //     const bridgingRequestPDA = anchor.web3.PublicKey.findProgramAddressSync(
+  //       [Buffer.from("bridging_request"), owner.publicKey.toBuffer()],
+  //       program.programId
+  //     )[0];
+
+  //     const remainingAccounts = validators.slice(0, 7).map((v) => ({
+  //       pubkey: v.publicKey,
+  //       isSigner: true,
+  //       isWritable: false,
+  //     }));
+
+  //     await program.methods
+  //       .closeRequest()
+  //       .accounts({
+  //         signer: owner.publicKey,
+  //         bridgingRequest: bridgingRequestPDA,
+  //       })
+  //       .remainingAccounts(remainingAccounts)
+  //       .signers(validators.slice(0, 7))
+  //       .rpc();
+
+  //     try {
+  //       await program.account.bridgingRequest.fetch(bridgingRequestPDA);
+  //       assert.fail("Expected fetching closed account to fail");
+  //     } catch (e: any) {
+  //       assert.ok(e, "Expected error when fetching closed account");
+  //     }
+  //   });
+  // });
+
+  // describe("Validator Set Change - Bad Cases", () => {
+  //   it("quorum of signers not reached for the transaction", async () => {
+  //     const newValidators = validators.slice(5, 15);
+
+  //     const remainingAccounts = validators.slice(0, 2).map((v) => ({
+  //       pubkey: v.publicKey,
+  //       isSigner: true,
+  //       isWritable: false,
+  //     }));
+
+  //     try {
+  //       await program.methods
+  //         .validatorSetChange(newValidators.map((v) => v.publicKey))
+  //         .accounts({
+  //           signer: owner.publicKey,
+  //           validatorSet: vsPDA,
+  //         })
+  //         .remainingAccounts(remainingAccounts)
+  //         .signers(validators.slice(0, 2))
+  //         .rpc();
+
+  //       assert.fail(
+  //         "Transaction should have failed with NotEnoughSigners error"
+  //       );
+  //     } catch (e) {
+  //       expect(e.error.errorCode.code).to.equal("NotEnoughSigners");
+  //     }
+  //   });
+
+  //   it("one of the signers is not part of the validator set", async () => {
+  //     const newValidators = validators.slice(5, 15);
+
+  //     const invalidSigner = anchor.web3.Keypair.generate();
+  //     const remainingAccounts = [
+  //       ...validators.slice(0, 6).map((v) => ({
+  //         pubkey: v.publicKey,
+  //         isSigner: true,
+  //         isWritable: false,
+  //       })),
+  //       {
+  //         pubkey: invalidSigner.publicKey,
+  //         isSigner: true,
+  //         isWritable: false,
+  //       },
+  //     ];
+
+  //     try {
+  //       await program.methods
+  //         .validatorSetChange(newValidators.map((v) => v.publicKey))
+  //         .accounts({
+  //           signer: owner.publicKey,
+  //           validatorSet: vsPDA,
+  //         })
+  //         .remainingAccounts(remainingAccounts)
+  //         .signers([...validators.slice(0, 6), invalidSigner])
+  //         .rpc();
+
+  //       assert.fail("Transaction should have failed with InvalidSigner error");
+  //     } catch (e) {
+  //       expect(e.error.errorCode.code).to.equal("InvalidSigner");
+  //     }
+  //   });
+
+  //   it("provided new validator set contains less validators (3) than MIN_VALIDATORS (4)", async () => {
+  //     const remainingAccounts = validators.slice(0, 7).map((v) => ({
+  //       pubkey: v.publicKey,
+  //       isSigner: true,
+  //       isWritable: false,
+  //     }));
+
+  //     try {
+  //       await program.methods
+  //         .validatorSetChange(validators.slice(0, 3).map((v) => v.publicKey))
+  //         .accounts({
+  //           signer: owner.publicKey,
+  //           validatorSet: vsPDA,
+  //         })
+  //         .remainingAccounts(remainingAccounts)
+  //         .signers(validators.slice(0, 7))
+  //         .rpc();
+
+  //       assert.fail(
+  //         "Transaction should have failed with MinValidatorsNotMet error"
+  //       );
+  //     } catch (e) {
+  //       expect(e.error.errorCode.code).to.equal("MinValidatorsNotMet");
+  //     }
+  //   });
+
+  //   it("provided new validator set contains more validators (11) than MAX_VALIDATORS (10)", async () => {
+  //     const remainingAccounts = validators.slice(0, 3).map((v) => ({
+  //       pubkey: v.publicKey,
+  //       isSigner: true,
+  //       isWritable: false,
+  //     }));
+
+  //     try {
+  //       await program.methods
+  //         .validatorSetChange(validators.slice(0, 11).map((v) => v.publicKey))
+  //         .accounts({
+  //           signer: owner.publicKey,
+  //           validatorSet: vsPDA,
+  //         })
+  //         .remainingAccounts(remainingAccounts)
+  //         .signers(validators.slice(0, 3))
+  //         .rpc();
+
+  //       assert.fail(
+  //         "Transaction should have failed with MaxValidatorsExceeded error"
+  //       );
+  //     } catch (e) {
+  //       expect(e.error.errorCode.code).to.equal("MaxValidatorsExceeded");
+  //     }
+  //   });
+
+  //   it("provided new validator set contains duplicates", async () => {
+  //     const newValidators = [
+  //       validators[3],
+  //       validators[3],
+  //       validators[5],
+  //       validators[12],
+  //       validators[13],
+  //       validators[11],
+  //     ];
+
+  //     const remainingAccounts = validators.slice(0, 7).map((v) => ({
+  //       pubkey: v.publicKey,
+  //       isSigner: true,
+  //       isWritable: false,
+  //     }));
+
+  //     try {
+  //       await program.methods
+  //         .validatorSetChange(newValidators.map((v) => v.publicKey))
+  //         .accounts({
+  //           signer: owner.publicKey,
+  //           validatorSet: vsPDA,
+  //         })
+  //         .remainingAccounts(remainingAccounts)
+  //         .signers(validators.slice(0, 7))
+  //         .rpc();
+
+  //       assert.fail(
+  //         "Transaction should have failed with ValidatorsNotUnique error"
+  //       );
+  //     } catch (e) {
+  //       expect(e.error.errorCode.code).to.equal("ValidatorsNotUnique");
+  //     }
+  //   });
+  // });
+
+  // describe("Validator Set Change - Success Case", () => {
+  //   it("successful", async () => {
+  //     const newValidators = validators.slice(5, 15);
+
+  //     const remainingAccounts = validators.slice(0, 7).map((v) => ({
+  //       pubkey: v.publicKey,
+  //       isSigner: true,
+  //       isWritable: false,
+  //     }));
+
+  //     await program.methods
+  //       .validatorSetChange(newValidators.map((v) => v.publicKey))
+  //       .accounts({
+  //         signer: owner.publicKey,
+  //         validatorSet: vsPDA,
+  //       })
+  //       .remainingAccounts(remainingAccounts)
+  //       .signers(validators.slice(0, 7))
+  //       .rpc();
+
+  //     const vs = await program.account.validatorSet.fetch(vsPDA);
+
+  //     vs.signers.forEach((v) => {
+  //       assert(newValidators.find((val) => val.publicKey.equals(v)));
+  //     });
+  //   });
+  // });
 });

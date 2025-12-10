@@ -14,7 +14,7 @@ use crate::*;
 /// This struct defines the accounts required to mint tokens to a recipient.
 /// It includes the validator set for consensus validation and token accounts for minting.
 #[derive(Accounts)]
-#[instruction(batch_id: u64)]
+#[instruction(amount: u64, batch_id: u64)]
 pub struct CreateOrApproveTransaction<'info> {
     /// The payer for any associated token account creation
     #[account(mut)]
@@ -30,7 +30,7 @@ pub struct CreateOrApproveTransaction<'info> {
 
     /// The bridging transaction account to be created
     #[account(
-        init,
+        init_if_needed,
         payer = payer,
         space = DISC + BridgingTransaction::INIT_SPACE,
         seeds = [BRIDGING_TRANSACTION_SEED, batch_id.to_le_bytes().as_ref()],
@@ -38,7 +38,9 @@ pub struct CreateOrApproveTransaction<'info> {
     )]
     pub bridging_transaction: Account<'info, BridgingTransaction>,
 
-    /// The token mint that will be used to mint tokens
+    /// CHECK: ....
+    pub receiver: UncheckedAccount<'info>,
+
     pub mint_token: Account<'info, Mint>,
 
     /// The system program for account creation
@@ -46,23 +48,19 @@ pub struct CreateOrApproveTransaction<'info> {
 }
 
 impl<'info> CreateOrApproveTransaction<'info> {
-    pub fn process_instruction(
-        ctx: Context<Self>,
-        amount: u64,
-        receiver: Pubkey,
-        batch_id: u64,
-    ) -> Result<()> {
+    pub fn process_instruction(ctx: Context<Self>, amount: u64, batch_id: u64) -> Result<()> {
         let bridging_transaction = &mut ctx.accounts.bridging_transaction;
         let payer = &ctx.accounts.payer;
+        let receiver = &ctx.accounts.receiver;
         let mint_token = &ctx.accounts.mint_token;
 
         // Validate that the receiver is not the same as the payer
-        require!(receiver != payer.key(), CustomError::InvalidReceiver);
+        require!(receiver.key() != payer.key(), CustomError::InvalidReceiver);
 
-        // Store the transaction details
-        bridging_transaction.id = Pubkey::new_unique();
+        // // Store the transaction details
+        bridging_transaction.id = bridging_transaction.key();
         bridging_transaction.amount = amount;
-        bridging_transaction.receiver = receiver;
+        bridging_transaction.receiver = receiver.key();
         bridging_transaction.mint_token = mint_token.key();
         bridging_transaction.batch_id = batch_id;
         bridging_transaction.bump = ctx.bumps.bridging_transaction;
