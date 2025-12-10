@@ -90,7 +90,7 @@ impl<'info> ExecuteTransaction<'info> {
     /// * Ensures all signers are part of the authorized validator set
     /// * Creates recipient's associated token account if it doesn't exist
     /// * Mints tokens using the validator set as the minting authority
-    pub fn process_instruction(ctx: Context<Self>, amount: u64) -> Result<()> {
+    pub fn process_instruction(ctx: Context<Self>) -> Result<()> {
         let token_program = &ctx.accounts.token_program;
         let validator_set = &ctx.accounts.validator_set;
         let bridging_transaction = &mut ctx.accounts.bridging_transaction;
@@ -159,7 +159,7 @@ impl<'info> ExecuteTransaction<'info> {
                 cpi_accounts,
                 signer_seeds,
             ),
-            amount,
+            bridging_transaction.amount,
         )?;
 
         emit!(TransactionExecutedEvent {

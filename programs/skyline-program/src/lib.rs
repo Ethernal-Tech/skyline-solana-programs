@@ -138,4 +138,43 @@ pub mod skyline_program {
     pub fn close_request(ctx: Context<CloseRequest>) -> Result<()> {
         CloseRequest::process_instruction(ctx)
     }
+
+    /// Create or approve a bridging transaction.
+    ///
+    /// This instruction creates or approves a bridging transaction for transferring tokens to a recipient.
+    /// The transaction is created or approved based on the batch ID.
+    ///
+    /// # Arguments
+    /// * `ctx` - The context containing accounts for creating or approving the transaction
+    /// * `amount` - The amount of tokens to transfer
+    /// * `receiver` - The receiver's address
+    /// * `batch_id` - The batch ID
+    ///
+    /// # Errors
+    /// * `NoSignersProvided` - If no signers are provided
+    /// * `SignerAlreadyApproved` - If a signer is already approved
+    pub fn create_or_approve_transaction(
+        ctx: Context<CreateOrApproveTransaction>,
+        amount: u64,
+        receiver: Pubkey,
+        batch_id: u64,
+    ) -> Result<()> {
+        CreateOrApproveTransaction::process_instruction(ctx, amount, receiver, batch_id)
+    }
+
+    /// Execute a bridging transaction.
+    ///
+    /// This instruction executes a bridging transaction for transferring tokens to a recipient.
+    /// The transaction is executed based on the batch ID.
+    ///
+    /// # Arguments
+    /// * `ctx` - The context containing accounts for executing the transaction
+    /// * `amount` - The amount of tokens to transfer
+    ///
+    /// # Errors
+    /// * `NotEnoughSigners` - If insufficient validators have signed
+    /// * `InvalidSigner` - If a signer is not in the validator set
+    pub fn execute_transaction(ctx: Context<ExecuteTransaction>) -> Result<()> {
+        ExecuteTransaction::process_instruction(ctx)
+    }
 }
