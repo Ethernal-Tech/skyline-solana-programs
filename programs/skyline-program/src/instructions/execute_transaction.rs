@@ -167,6 +167,8 @@ impl<'info> ExecuteTransaction<'info> {
             batch_id: bridging_transaction.batch_id,
         });
 
+        // Close other bridging transactions
+
         Ok(())
     }
 }

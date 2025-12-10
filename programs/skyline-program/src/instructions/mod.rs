@@ -8,10 +8,6 @@
 pub mod initialize;
 pub use initialize::*;
 
-/// Mint tokens to recipients on the destination chain.
-pub mod bridge_tokens;
-pub use bridge_tokens::*;
-
 /// Create cross-chain bridging requests and burn source tokens.
 pub mod bridge_request;
 pub use bridge_request::*;
@@ -24,13 +20,9 @@ pub use validator_set_change::*;
 pub mod close_requests;
 pub use close_requests::*;
 
-/// Create a bridging transaction.
-pub mod create_transaction;
-pub use create_transaction::*;
-
-/// Approve a bridging transaction.
-pub mod approve_transaction;
-pub use approve_transaction::*;
+/// Create or approve a bridging transaction.
+pub mod create_or_approve_transaction;
+pub use create_or_approve_transaction::*;
 
 /// Execute a bridging transaction.
 pub mod execute_transaction;

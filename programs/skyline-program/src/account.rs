@@ -31,8 +31,6 @@ pub struct ValidatorSet {
     pub bump: u8,
     /// Last batch id
     pub last_batch_id: u64,
-    /// Transaction in progress
-    pub transaction_in_progress: bool,
 }
 
 #[account]

@@ -70,25 +70,12 @@ pub mod skyline_program {
     /// * `MaxValidatorsExceeded` - If more than 10 validators are provided
     /// * `MinValidatorsNotMet` - If fewer than 4 validators are provided
     /// * `ValidatorsNotUnique` - If duplicate validators are provided
-    pub fn initialize(ctx: Context<Initialize>, validators: Vec<Pubkey>, last_id: u64) -> Result<()> {
-        Initialize::process_instruction(ctx, validators, last_id)
-    }
-
-    /// Mint tokens to a recipient on the destination chain.
-    ///
-    /// This instruction mints tokens to a specified recipient, typically called after
-    /// tokens have been burned on the source chain. Requires approval from a sufficient
-    /// number of validators based on the consensus threshold.
-    ///
-    /// # Arguments
-    /// * `ctx` - The context containing accounts for token minting
-    /// * `amount` - The amount of tokens to mint
-    ///
-    /// # Errors
-    /// * `NotEnoughSigners` - If insufficient validators have signed
-    /// * `InvalidSigner` - If a signer is not in the validator set
-    pub fn bridge_tokens(ctx: Context<BridgeTokens>, amount: u64) -> Result<()> {
-        BridgeTokens::process_instruction(ctx, amount)
+    pub fn initialize(
+        ctx: Context<Initialize>,
+        validators: Vec<Pubkey>,
+        last_id: Option<u64>,
+    ) -> Result<()> {
+        Initialize::process_instruction(ctx, validators, last_id.unwrap_or(0))
     }
 
     /// Create a cross-chain bridging request and burn source tokens.

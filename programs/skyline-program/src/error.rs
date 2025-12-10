@@ -60,8 +60,8 @@ pub enum CustomError {
     /// Transaction in progress.
     ///
     /// This error occurs when a transaction is already in progress.
-    #[msg("Transaction in progress")]
-    TransactionInProgress,
+    #[msg("Invalid batch id; Batch Id must be higher than last batch id")]
+    InvalidBatchId,
 
     /// Invalid receiver provided.
     ///
@@ -80,4 +80,10 @@ pub enum CustomError {
     /// This error occurs when no signers are provided.
     #[msg("No signers provided")]
     NoSignersProvided,
+
+    /// Signer already approved.
+    ///
+    /// This error occurs when a signer is already approved.
+    #[msg("Signer already approved")]
+    SignerAlreadyApproved,
 }
