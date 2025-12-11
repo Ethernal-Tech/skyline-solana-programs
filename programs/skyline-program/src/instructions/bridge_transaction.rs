@@ -87,9 +87,6 @@ impl<'info> BridgeTransaction<'info> {
         let associated_token_program = &ctx.accounts.associated_token_program;
         let token_program = &ctx.accounts.token_program;
 
-        // Validate that the receiver is not the same as the payer
-        require!(receiver.key() != payer.key(), CustomError::InvalidReceiver);
-
         // // Store the transaction details
         bridging_transaction.id = bridging_transaction.key();
         bridging_transaction.amount = amount;
@@ -101,9 +98,23 @@ impl<'info> BridgeTransaction<'info> {
         let signers = ctx
             .remaining_accounts
             .iter()
-            .filter(|acc| acc.is_signer && validator_set.signers.contains(acc.key))
+            .filter(|acc| acc.is_signer)
             .map(|acc| acc.key())
             .collect::<Vec<Pubkey>>();
+
+        let mut signers_copy = signers.clone();
+        signers_copy.sort();
+        signers_copy.dedup();
+
+        require!(
+            signers.len() == signers_copy.len(),
+            CustomError::DuplicateSignersProvided
+        );
+
+        require!(
+            signers.iter().any(|k| !validator_set.signers.contains(k)),
+            CustomError::InvalidSigner
+        );
 
         require!(signers.len() > 0, CustomError::NoSignersProvided);
         require!(

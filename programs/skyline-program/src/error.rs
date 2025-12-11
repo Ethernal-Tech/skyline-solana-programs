@@ -104,4 +104,10 @@ pub enum CustomError {
     /// This error occurs when a signer is not in the validator set.
     #[msg("Removing non existent signer")]
     RemovingNonExistentSigner,
+
+    /// Duplicate signers provided.
+    ///
+    /// This error occurs when duplicate signers are provided.
+    #[msg("Duplicate signers provided")]
+    DuplicateSignersProvided,
 }
