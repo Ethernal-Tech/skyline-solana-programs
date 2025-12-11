@@ -4,7 +4,7 @@
 //! bridge operations. This instruction requires consensus from the current validator
 //! set and maintains the same validation rules as initialization.
 
-use anchor_lang::solana_program::hash::hash;
+use anchor_lang::solana_program::{example_mocks::solana_sdk::signers, hash::hash};
 
 use crate::*;
 
@@ -92,6 +92,11 @@ impl<'info> BridgeVSU<'info> {
                 CustomError::MinValidatorsNotMet
             );
 
+            require!(
+                removed.iter().all(|id| (*id as usize) < signers_len),
+                CustomError::RemovingNonExistentSigner
+            );
+
             validator_set_change.proposal_hash = proposal_hash.to_bytes();
             validator_set_change.added = added;
             validator_set_change.removed = removed;
@@ -110,13 +115,29 @@ impl<'info> BridgeVSU<'info> {
         let signers = ctx
             .remaining_accounts
             .iter()
-            .filter(|acc| {
-                acc.is_signer
-                    && validator_set.signers.contains(acc.key)
-                    && !validator_set_change.signers.contains(acc.key)
-            })
+            .filter(|acc| acc.is_signer)
             .map(|acc| acc.key())
             .collect::<Vec<Pubkey>>();
+
+        let mut signers_copy = signers.clone();
+        signers_copy.sort();
+        signers_copy.dedup();
+        require!(
+            signers.len() == signers_copy.len(),
+            CustomError::DuplicateSignersProvided
+        );
+
+        require!(
+            signers.iter().any(|k| validator_set.signers.contains(k)),
+            CustomError::InvalidSigner
+        );
+
+        require!(
+            !signers
+                .iter()
+                .any(|s| validator_set_change.signers.contains(s)),
+            CustomError::SignerAlreadyApproved
+        );
 
         require!(signers.len() > 0, CustomError::NoSignersProvided);
 
