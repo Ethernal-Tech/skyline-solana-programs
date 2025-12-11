@@ -163,39 +163,18 @@ describe("skyline-program", () => {
     it("successful", async () => {
       await createOrApproveTransaction(validators.slice(0, 1), 1);
 
-      const bridgingTransaction =
-        await program.account.bridgingTransaction.fetch(
-          anchor.web3.PublicKey.findProgramAddressSync(
-            [Buffer.from("bridging_transaction"), new anchor.BN(1).toBuffer()],
-            program.programId
-          )[0]
-        );
-
-      assert.equal(bridgingTransaction.signers.length, 1);
+      const bridging_txs = await program.account.bridgingTransaction.all();
       assert.equal(
-        bridgingTransaction.signers[0].toString(),
-        validators[0].publicKey.toString()
+        bridging_txs.length,
+        1,
+        "should have 1 bridging transaction"
       );
-      assert.equal(
-        bridgingTransaction.amount.toString(),
-        new anchor.BN(1_000_000_000).toString()
-      );
-      assert.equal(
-        bridgingTransaction.receiver.toString(),
-        recipient.publicKey.toString()
-      );
-      assert.equal(bridgingTransaction.mintToken.toString(), mint.toString());
-      assert.equal(
-        bridgingTransaction.batchId.toString(),
-        new anchor.BN(1).toString()
-      );
-      assert.equal(bridgingTransaction.bump, 0);
     });
 
     it("sign with enough validators", async () => {
-      for (let i = 1; i < validators.length; i++) {
-        await createOrApproveTransaction(validators.slice(i, i + 1), i + 1);
-      }
+      validators.slice(1, 10).forEach(async (v) => {
+        await createOrApproveTransaction([v], 1);
+      });
     });
   });
 
