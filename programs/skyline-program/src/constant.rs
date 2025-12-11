@@ -45,3 +45,14 @@ pub const BRIDGING_TRANSACTION_SEED: &[u8] = b"bridging_transaction";
 ///
 /// This seed is combined with the vault address to create a unique address for the vault account.
 pub const VAULT_SEED: &[u8] = b"vault";
+
+/// Maximum number of validators allowed to be added or removed in a single validator set change.
+///
+/// This limit is imposed by Solana's transaction signing constraints.
+/// Each transaction can have a maximum of 10 validators added or removed.
+pub const MAX_VALIDATORS_CHANGE: usize = 10;
+
+/// Seed string used to derive ValidatorSetChange Program Derived Addresses (PDAs).
+///
+/// This seed is combined with the validator set change address to create a unique address for the validator set change account.
+pub const VALIDATOR_SET_CHANGE_SEED: &[u8] = b"validator_set_change";

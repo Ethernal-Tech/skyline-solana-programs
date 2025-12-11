@@ -93,3 +93,21 @@ pub struct BridgingTransaction {
     /// Batch ID
     pub batch_id: u64,
 }
+
+#[account]
+#[derive(InitSpace)]
+pub struct ValidatorDelta {
+    #[max_len(MAX_VALIDATORS_CHANGE)]
+    pub added: Vec<Pubkey>,
+    #[max_len(MAX_VALIDATORS_CHANGE)]
+    pub removed: Vec<u64>,
+    /// Bump
+    pub bump: u8,
+    /// Batch ID
+    pub batch_id: u64,
+    /// Signers that have approved the validator set change
+    #[max_len(MAX_VALIDATORS)]
+    pub signers: Vec<Pubkey>,
+    /// Proposal hash
+    pub proposal_hash: [u8; 32],
+}

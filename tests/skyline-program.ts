@@ -29,12 +29,36 @@ describe("skyline-program", () => {
     program.programId
   )[0];
 
+  const vaultPDA = anchor.web3.PublicKey.findProgramAddressSync(
+    [Buffer.from("vault")],
+    program.programId
+  )[0];
+
   const recipient = anchor.web3.Keypair.generate();
 
   let mint: web3.PublicKey;
-  createMint(provider.connection, owner.payer, vsPDA, null, 9).then(
+  createMint(provider.connection, owner.payer, owner.publicKey, null, 9).then(
     (m) => (mint = m)
   );
+
+  const mintToVault = async (amount: number) => {
+    const ata = await getOrCreateAssociatedTokenAccount(
+      provider.connection,
+      owner.payer,
+      mint,
+      vaultPDA,
+      true
+    );
+
+    await mintTo(
+      provider.connection,
+      owner.payer,
+      mint,
+      ata.address,
+      owner.payer,
+      amount
+    );
+  };
 
   // describe("Initialize - Bad Cases", () => {
   //   it("provided less (3) than MIN_VALIDATORS (4) validators", async () => {
@@ -148,33 +172,30 @@ describe("skyline-program", () => {
     }));
 
     await program.methods
-      .createOrApproveTransaction(new anchor.BN(1), new anchor.BN(batchId))
+      .bridgeTransaction(new anchor.BN(1), new anchor.BN(batchId))
       .accounts({
         payer: owner.publicKey,
-        receiver: recipient.publicKey,
+        recipient: recipient.publicKey,
         mintToken: mint,
+        recipientAta: getAssociatedTokenAddressSync(mint, recipient.publicKey),
+        vaultAta: getAssociatedTokenAddressSync(mint, vaultPDA, true),
       })
       .signers(signers)
       .remainingAccounts(remainingAccounts)
       .rpc();
   };
 
-  describe("Bridge Transaction Creation - Success Case", () => {
+  describe("Bridge Transaction - Success Case", () => {
     it("successful", async () => {
-      await createOrApproveTransaction(validators.slice(0, 1), 1);
+      await mintToVault(1000);
 
-      const bridging_txs = await program.account.bridgingTransaction.all();
-      assert.equal(
-        bridging_txs.length,
-        1,
-        "should have 1 bridging transaction"
+      await createOrApproveTransaction(validators.slice(0, 7), 1);
+
+      const tokenBalance = await provider.connection.getTokenAccountBalance(
+        await getAssociatedTokenAddressSync(mint, recipient.publicKey)
       );
-    });
 
-    it("sign with enough validators", async () => {
-      validators.slice(1, 10).forEach(async (v) => {
-        await createOrApproveTransaction([v], 1);
-      });
+      console.log(tokenBalance);
     });
   });
 

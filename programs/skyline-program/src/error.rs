@@ -86,4 +86,22 @@ pub enum CustomError {
     /// This error occurs when a signer is already approved.
     #[msg("Signer already approved")]
     SignerAlreadyApproved,
+
+    /// Invalid proposal hash.
+    ///
+    /// This error occurs when the proposal hash is not valid.
+    #[msg("Invalid proposal hash")]
+    InvalidProposalHash,
+
+    /// Adding existing signer.
+    ///
+    /// This error occurs when a signer is already in the validator set.
+    #[msg("Adding existing signer")]
+    AddingExistingSigner,
+
+    /// Removing non existent signer.
+    ///
+    /// This error occurs when a signer is not in the validator set.
+    #[msg("Removing non existent signer")]
+    RemovingNonExistentSigner,
 }
