@@ -4,12 +4,7 @@
 //! validator limits, seed strings for Program Derived Addresses (PDAs), and
 //! other configuration parameters.
 
-/// Maximum number of validator signers allowed in the Solana protocol.
-///
-/// This limit is imposed by Solana's transaction signing constraints.
-/// Each transaction can have a maximum of 10 signers, which includes
-/// all validator signatures plus any other required signers.
-pub const MAX_VALIDATORS: usize = 10;
+pub const MAX_VALIDATORS: usize = 128;
 
 /// Size of the account discriminator in bytes.
 ///
