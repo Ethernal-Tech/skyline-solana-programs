@@ -76,7 +76,6 @@ impl<'info> BridgeVSU<'info> {
 
         if validator_set_change.id == Pubkey::default() {
             let signers_len = validator_set.signers.len();
-
             require!(
                 !added.iter().any(|pk| validator_set.signers.contains(pk)),
                 CustomError::AddingExistingSigner
@@ -91,7 +90,6 @@ impl<'info> BridgeVSU<'info> {
                 new_signers_len >= MIN_VALIDATORS,
                 CustomError::MinValidatorsNotMet
             );
-
             require!(
                 removed.iter().all(|id| (*id as usize) < signers_len),
                 CustomError::RemovingNonExistentSigner
@@ -127,19 +125,16 @@ impl<'info> BridgeVSU<'info> {
             signers.len() == signers_copy.len(),
             CustomError::DuplicateSignersProvided
         );
-
         require!(
             signers.iter().all(|k| validator_set.signers.contains(k)),
             CustomError::InvalidSigner
         );
-
         require!(
             signers
                 .iter()
                 .all(|s| !validator_set_change.signers.contains(s)),
             CustomError::SignerAlreadyApproved
         );
-
         require!(signers.len() > 0, CustomError::NoSignersProvided);
 
         validator_set_change.signers.extend(signers.iter());
@@ -159,7 +154,7 @@ impl<'info> BridgeVSU<'info> {
             validator_set.signers.push(*pk);
         }
 
-        validator_set.threshold = ((validator_set.signers.len() as f32) * 2.0 / 3.0).ceil() as u8;
+        validator_set.threshold = helpers::calculate_threshold(validator_set.signers.len());
 
         emit!(ValidatorSetUpdatedEvent {
             new_signers: validator_set.signers.clone(),
@@ -168,7 +163,6 @@ impl<'info> BridgeVSU<'info> {
         });
 
         validator_set.last_batch_id = batch_id;
-
         validator_set_change.close(payer.to_account_info())?;
 
         Ok(())

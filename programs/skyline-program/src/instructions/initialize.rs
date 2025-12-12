@@ -73,7 +73,7 @@ impl<'info> Initialize<'info> {
         
         // Calculate consensus threshold as 2/3 of validators, rounded up
         // This ensures that at least 2/3 of validators must approve critical operations
-        validator_set.threshold = ((validator_set.signers.len() as f32) * 2.0 / 3.0).ceil() as u8;
+        validator_set.threshold = helpers::calculate_threshold(validator_set.signers.len());
         
         // Store the bump seed for PDA derivation
         validator_set.bump = ctx.bumps.validator_set;
