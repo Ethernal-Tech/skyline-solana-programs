@@ -77,7 +77,6 @@ impl<'info> BridgeTransaction<'info> {
     pub fn process_instruction(ctx: Context<Self>, amount: u64, batch_id: u64) -> Result<()> {
         let bridging_transaction = &mut ctx.accounts.bridging_transaction;
         let payer = &ctx.accounts.payer;
-        let receiver = &ctx.accounts.recipient;
         let validator_set = &mut ctx.accounts.validator_set;
         let recipient = &ctx.accounts.recipient;
         let recipient_ata = &ctx.accounts.recipient_ata;
@@ -88,12 +87,21 @@ impl<'info> BridgeTransaction<'info> {
         let token_program = &ctx.accounts.token_program;
 
         // // Store the transaction details
-        bridging_transaction.id = bridging_transaction.key();
-        bridging_transaction.amount = amount;
-        bridging_transaction.receiver = recipient.key();
-        bridging_transaction.mint_token = mint.key();
-        bridging_transaction.batch_id = batch_id;
-        bridging_transaction.bump = ctx.bumps.bridging_transaction;
+        if bridging_transaction.id == Pubkey::default() {
+            bridging_transaction.id = bridging_transaction.key();
+            bridging_transaction.amount = amount;
+            bridging_transaction.receiver = recipient.key();
+            bridging_transaction.mint_token = mint.key();
+            bridging_transaction.batch_id = batch_id;
+            bridging_transaction.bump = ctx.bumps.bridging_transaction;
+        } else {
+            require!(
+                bridging_transaction.amount == amount
+                    && bridging_transaction.receiver == recipient.key()
+                    && bridging_transaction.mint_token == mint.key(),
+                CustomError::BridgingTransactionMismatch
+            );
+        }
 
         let signers = ctx
             .remaining_accounts
@@ -112,7 +120,7 @@ impl<'info> BridgeTransaction<'info> {
         );
 
         require!(
-            signers.iter().any(|k| !validator_set.signers.contains(k)),
+            signers.iter().all(|k| validator_set.signers.contains(k)),
             CustomError::InvalidSigner
         );
 

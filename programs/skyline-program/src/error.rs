@@ -110,4 +110,10 @@ pub enum CustomError {
     /// This error occurs when duplicate signers are provided.
     #[msg("Duplicate signers provided")]
     DuplicateSignersProvided,
+
+    /// Bridging transaction mismatch.
+    ///
+    /// This error occurs when the bridging transaction details do not match.
+    #[msg("Bridging transaction details do not match")]
+    BridgingTransactionMismatch,
 }

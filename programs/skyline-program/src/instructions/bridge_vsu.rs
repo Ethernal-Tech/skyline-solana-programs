@@ -4,7 +4,7 @@
 //! bridge operations. This instruction requires consensus from the current validator
 //! set and maintains the same validation rules as initialization.
 
-use anchor_lang::solana_program::{example_mocks::solana_sdk::signers, hash::hash};
+use anchor_lang::solana_program::hash::hash;
 
 use crate::*;
 
@@ -128,14 +128,14 @@ impl<'info> BridgeVSU<'info> {
         );
 
         require!(
-            signers.iter().any(|k| validator_set.signers.contains(k)),
+            signers.iter().all(|k| validator_set.signers.contains(k)),
             CustomError::InvalidSigner
         );
 
         require!(
-            !signers
+            signers
                 .iter()
-                .any(|s| validator_set_change.signers.contains(s)),
+                .all(|s| !validator_set_change.signers.contains(s)),
             CustomError::SignerAlreadyApproved
         );
 
