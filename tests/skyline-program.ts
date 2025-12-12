@@ -64,7 +64,10 @@ describe("skyline-program", () => {
   //   it("provided less (3) than MIN_VALIDATORS (4) validators", async () => {
   //     try {
   //       await program.methods
-  //         .initialize(validators.slice(0, 3).map((v) => v.publicKey), new anchor.BN(0))
+  //         .initialize(
+  //           validators.slice(0, 3).map((v) => v.publicKey),
+  //           new anchor.BN(0)
+  //         )
   //         .accounts({
   //           signer: owner.publicKey,
   //         })
@@ -81,7 +84,10 @@ describe("skyline-program", () => {
   //   it("provided more (11) than MAX_VALIDATORS (10) validators", async () => {
   //     try {
   //       await program.methods
-  //         .initialize(validators.slice(0, 11).map((v) => v.publicKey), new anchor.BN(0))
+  //         .initialize(
+  //           validators.slice(0, 11).map((v) => v.publicKey),
+  //           new anchor.BN(0)
+  //         )
   //         .accounts({
   //           signer: owner.publicKey,
   //         })
@@ -139,10 +145,10 @@ describe("skyline-program", () => {
   // });
 
   describe("Initialize - Success Case", () => {
-    it("correct number of validators (10)", async () => {
+    it("correct number of validators (7)", async () => {
       await program.methods
         .initialize(
-          validators.slice(0, 10).map((v) => v.publicKey),
+          validators.slice(0, 7).map((v) => v.publicKey),
           new anchor.BN(0)
         )
         .accounts({
@@ -153,18 +159,15 @@ describe("skyline-program", () => {
       const vs = await program.account.validatorSet.fetch(vsPDA);
 
       vs.signers.forEach((v) => {
-        assert(validators.slice(0, 10).find((val) => val.publicKey.equals(v)));
+        assert(validators.slice(0, 7).find((val) => val.publicKey.equals(v)));
       });
 
-      assert.equal(vs.threshold, 7);
+      assert.equal(vs.threshold, 5);
       assert.isNumber(vs.bump);
     });
   });
 
-  const createOrApproveTransaction = async (
-    signers: web3.Keypair[],
-    batchId: number
-  ) => {
+  const bridgeToSolana = async (signers: web3.Keypair[], batchId: number) => {
     const remainingAccounts = signers.map((v) => ({
       pubkey: v.publicKey,
       isSigner: true,
@@ -172,7 +175,7 @@ describe("skyline-program", () => {
     }));
 
     await program.methods
-      .bridgeTransaction(new anchor.BN(1), new anchor.BN(batchId))
+      .bridgeTransaction(new anchor.BN(100), new anchor.BN(batchId))
       .accounts({
         payer: owner.publicKey,
         recipient: recipient.publicKey,
@@ -185,17 +188,217 @@ describe("skyline-program", () => {
       .rpc();
   };
 
-  describe("Bridge Transaction - Success Case", () => {
-    it("successful", async () => {
-      await mintToVault(1000);
+  describe("Bridge to Solana using 2 txs (quorum is 5)", () => {
+    it("send a tx with 3 sigs, one of which is from a non-validator -> tx fails", async () => {
+      try {
+        await bridgeToSolana([validators[0], validators[1], validators[15]], 1);
 
-      await createOrApproveTransaction(validators.slice(0, 7), 1);
+        assert.fail("Transaction should have failed with InvalidSigner error");
+      } catch (e) {
+        expect(e.error.errorCode.code).to.equal("InvalidSigner");
+      }
 
-      const tokenBalance = await provider.connection.getTokenAccountBalance(
-        await getAssociatedTokenAddressSync(mint, recipient.publicKey)
+      assert.lengthOf(await program.account.bridgingTransaction.all(), 0);
+    });
+
+    it("send a tx with 3 sigs, two of which are duplicates -> tx fails", async () => {
+      try {
+        await bridgeToSolana([validators[0], validators[1], validators[1]], 1);
+
+        assert.fail(
+          "Transaction should have failed with DuplicateSignersProvided error"
+        );
+      } catch (e) {
+        expect(e.error.errorCode.code).to.equal("DuplicateSignersProvided");
+      }
+
+      assert.lengthOf(await program.account.bridgingTransaction.all(), 0);
+    });
+
+    it("send a tx with 3 sigs -> tx succeeds", async () => {
+      await bridgeToSolana([validators[0], validators[1], validators[2]], 1);
+
+      for (let i = 0; i < 3; i++) {
+        assert.isTrue(
+          (
+            await program.account.bridgingTransaction.all()
+          )[0].account.signers.find(
+            (x) => x.toBase58() === validators[i].publicKey.toBase58()
+          ) != null
+        );
+      }
+    });
+
+    it("send a tx with 3 sigs, one of which is from a non-validator -> tx fails", async () => {
+      try {
+        await bridgeToSolana([validators[3], validators[4], validators[15]], 1);
+
+        assert.fail("Transaction should have failed with InvalidSigner error");
+      } catch (e) {
+        expect(e.error.errorCode.code).to.equal("InvalidSigner");
+      }
+
+      assert.lengthOf(await program.account.bridgingTransaction.all(), 1);
+
+      assert.lengthOf(
+        (await program.account.bridgingTransaction.all())[0].account.signers,
+        3
       );
 
-      console.log(tokenBalance);
+      for (let i = 0; i < 3; i++) {
+        assert.isTrue(
+          (
+            await program.account.bridgingTransaction.all()
+          )[0].account.signers.find(
+            (x) => x.toBase58() === validators[i].publicKey.toBase58()
+          ) != null
+        );
+      }
+    });
+
+    it("send a tx with 3 sigs, two of which are duplicates -> tx fails", async () => {
+      try {
+        await bridgeToSolana([validators[3], validators[4], validators[4]], 1);
+
+        assert.fail(
+          "Transaction should have failed with DuplicateSignersProvided error"
+        );
+      } catch (e) {
+        expect(e.error.errorCode.code).to.equal("DuplicateSignersProvided");
+      }
+
+      assert.lengthOf(await program.account.bridgingTransaction.all(), 1);
+
+      assert.lengthOf(
+        (await program.account.bridgingTransaction.all())[0].account.signers,
+        3
+      );
+
+      for (let i = 0; i < 3; i++) {
+        assert.isTrue(
+          (
+            await program.account.bridgingTransaction.all()
+          )[0].account.signers.find(
+            (x) => x.toBase58() === validators[i].publicKey.toBase58()
+          ) != null
+        );
+      }
+    });
+
+    it("send a tx with 3 sigs, one of which is from a validator that already voted in step 3 -> tx fails", async () => {
+      try {
+        await bridgeToSolana([validators[3], validators[4], validators[1]], 1);
+
+        assert.fail(
+          "Transaction should have failed with SignerAlreadyApproved error"
+        );
+      } catch (e) {
+        expect(e.error.errorCode.code).to.equal("SignerAlreadyApproved");
+      }
+
+      assert.lengthOf(await program.account.bridgingTransaction.all(), 1);
+
+      assert.lengthOf(
+        (await program.account.bridgingTransaction.all())[0].account.signers,
+        3
+      );
+
+      for (let i = 0; i < 3; i++) {
+        assert.isTrue(
+          (
+            await program.account.bridgingTransaction.all()
+          )[0].account.signers.find(
+            (x) => x.toBase58() === validators[i].publicKey.toBase58()
+          ) != null
+        );
+      }
+    });
+
+    it("send a tx with 3 sigs -> tx succeeds", async () => {
+      await mintToVault(1000);
+
+      assert.equal(
+        (
+          await program.account.validatorSet.all()
+        )[0].account.lastBatchId.toNumber(),
+        0
+      );
+
+      await bridgeToSolana([validators[3], validators[4], validators[5]], 1);
+
+      assert.equal(
+        (
+          await program.account.validatorSet.all()
+        )[0].account.lastBatchId.toNumber(),
+        1
+      );
+
+      const tokenBalance = await provider.connection.getTokenAccountBalance(
+        getAssociatedTokenAddressSync(mint, recipient.publicKey)
+      );
+
+      assert.equal(tokenBalance.value.amount, "100");
+      assert.lengthOf(await program.account.bridgingTransaction.all(), 0);
+    });
+  });
+
+  describe("Bridge to Solana using 1 txs", () => {
+    it("successful", async () => {
+      assert.equal(
+        (
+          await program.account.validatorSet.all()
+        )[0].account.lastBatchId.toNumber(),
+        1
+      );
+
+      await bridgeToSolana(validators.slice(0, 6), 2);
+
+      assert.equal(
+        (
+          await program.account.validatorSet.all()
+        )[0].account.lastBatchId.toNumber(),
+        2
+      );
+
+      const tokenBalance = await provider.connection.getTokenAccountBalance(
+        getAssociatedTokenAddressSync(mint, recipient.publicKey)
+      );
+
+      assert.equal(tokenBalance.value.amount, "200");
+      assert.lengthOf(await program.account.bridgingTransaction.all(), 0);
+    });
+  });
+
+  describe("Replay attack attempt: Bridge to Solana using 1 tx with a batch ID that is too low", () => {
+    it("unsuccessful", async () => {
+      assert.equal(
+        (
+          await program.account.validatorSet.all()
+        )[0].account.lastBatchId.toNumber(),
+        2
+      );
+
+      try {
+        await bridgeToSolana(validators.slice(0, 6), 2);
+
+        assert.fail("Transaction should have failed with InvalidBatchId error");
+      } catch (e) {
+        expect(e.error.errorCode.code).to.equal("InvalidBatchId");
+      }
+
+      assert.equal(
+        (
+          await program.account.validatorSet.all()
+        )[0].account.lastBatchId.toNumber(),
+        2
+      );
+
+      const tokenBalance = await provider.connection.getTokenAccountBalance(
+        getAssociatedTokenAddressSync(mint, recipient.publicKey)
+      );
+
+      assert.equal(tokenBalance.value.amount, "200");
+      assert.lengthOf(await program.account.bridgingTransaction.all(), 0);
     });
   });
 
