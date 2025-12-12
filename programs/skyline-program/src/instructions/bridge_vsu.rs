@@ -97,6 +97,7 @@ impl<'info> BridgeVSU<'info> {
                 CustomError::RemovingNonExistentSigner
             );
 
+            validator_set_change.id = validator_set_change.key();
             validator_set_change.proposal_hash = proposal_hash.to_bytes();
             validator_set_change.added = added;
             validator_set_change.removed = removed;
