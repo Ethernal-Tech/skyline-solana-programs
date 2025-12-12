@@ -130,7 +130,7 @@ pub mod skyline_program {
     /// * `NoSignersProvided` - If no validator signers are provided
     /// * `NotEnoughSigners` - If insufficient current validators have signed (checked when threshold is met)
     /// * `InvalidSigner` - If a signer is not in the current validator set
-    pub fn create_or_approve_vsu(
+    pub fn bridge_vsu(
         ctx: Context<BridgeVSU>,
         added: Vec<Pubkey>,
         removed: Vec<u64>,

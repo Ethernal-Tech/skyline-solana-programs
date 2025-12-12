@@ -74,7 +74,7 @@ impl<'info> BridgeVSU<'info> {
         let proposal_hash =
             hash(&[Self::concat_pubkeys(&added), Self::concat_u64(&removed)].concat());
 
-        if validator_set_change.proposal_hash.is_empty() {
+        if validator_set_change.id == Pubkey::default() {
             let signers_len = validator_set.signers.len();
 
             require!(

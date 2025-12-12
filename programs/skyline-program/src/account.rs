@@ -97,6 +97,7 @@ pub struct BridgingTransaction {
 #[account]
 #[derive(InitSpace)]
 pub struct ValidatorDelta {
+    pub id: Pubkey,
     #[max_len(MAX_VALIDATORS_CHANGE)]
     pub added: Vec<Pubkey>,
     #[max_len(MAX_VALIDATORS_CHANGE)]
