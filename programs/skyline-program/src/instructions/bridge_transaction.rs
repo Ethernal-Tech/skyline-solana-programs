@@ -36,7 +36,7 @@ pub struct BridgeTransaction<'info> {
     #[account(
         init_if_needed,
         payer = payer,
-        space = DISC + BridgingTransaction::INIT_SPACE,
+        space = DISC as usize + BridgingTransaction::INIT_SPACE,
         seeds = [BRIDGING_TRANSACTION_SEED, batch_id.to_le_bytes().as_ref()],
         bump
     )]

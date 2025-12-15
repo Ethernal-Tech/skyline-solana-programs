@@ -32,7 +32,7 @@ pub struct BridgeVSU<'info> {
     #[account(
         init_if_needed,
         payer = payer,
-        space = DISC + ValidatorDelta::INIT_SPACE,
+        space = DISC as usize + ValidatorDelta::INIT_SPACE,
         seeds = [VALIDATOR_SET_CHANGE_SEED, batch_id.to_le_bytes().as_ref()],
         bump
     )]
@@ -83,11 +83,11 @@ impl<'info> BridgeVSU<'info> {
 
             let new_signers_len = added.len() + signers_len - removed.len();
             require!(
-                new_signers_len <= MAX_VALIDATORS,
+                new_signers_len <= MAX_VALIDATORS as usize,
                 CustomError::MaxValidatorsExceeded
             );
             require!(
-                new_signers_len >= MIN_VALIDATORS,
+                new_signers_len >= MIN_VALIDATORS as usize,
                 CustomError::MinValidatorsNotMet
             );
             require!(

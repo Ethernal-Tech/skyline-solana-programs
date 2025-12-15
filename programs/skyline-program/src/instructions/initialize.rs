@@ -22,16 +22,16 @@ pub struct Initialize<'info> {
     #[account(
         init, 
         payer = signer, 
-        space = ValidatorSet::INIT_SPACE + DISC,
+        space = ValidatorSet::INIT_SPACE + DISC as usize,
         seeds = [VALIDATOR_SET_SEED],
-        constraint = validators.len() <= MAX_VALIDATORS @ CustomError::MaxValidatorsExceeded,
-        constraint = validators.len() >= MIN_VALIDATORS @ CustomError::MinValidatorsNotMet,
+        constraint = validators.len() <= MAX_VALIDATORS as usize @ CustomError::MaxValidatorsExceeded,
+        constraint = validators.len() >= MIN_VALIDATORS as usize @ CustomError::MinValidatorsNotMet,
         bump
     )]
     pub validator_set: Account<'info, ValidatorSet>,
 
     /// The vault account
-    #[account(init, payer = signer, space = Vault::INIT_SPACE + DISC, seeds = [VAULT_SEED], bump)]
+    #[account(init, payer = signer, space = Vault::INIT_SPACE + DISC as usize, seeds = [VAULT_SEED], bump)]
     pub vault: Account<'info, Vault>,
 
     /// The system program for account creation

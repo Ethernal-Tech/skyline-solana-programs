@@ -42,7 +42,7 @@ pub struct BridgeRequest<'info> {
     /// The bridging request account to be created
     #[account(init,
         payer = signer,
-        space = DISC + BridgingRequest::INIT_SPACE,
+        space = DISC as usize + BridgingRequest::INIT_SPACE,
         seeds = [BRIDGING_REQUEST_SEED, signer.key().as_ref()],
         bump
     )]
