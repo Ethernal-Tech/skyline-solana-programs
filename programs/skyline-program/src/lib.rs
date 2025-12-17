@@ -142,21 +142,6 @@ pub mod skyline_program {
         BridgeVSU::process_instruction(ctx, added, removed, batch_id)
     }
 
-    /// Close a bridging request account.
-    ///
-    /// This instruction closes a bridging request account, typically called after
-    /// the request has been processed or cancelled. Requires validator approval.
-    ///
-    /// # Arguments
-    /// * `ctx` - The context containing accounts for closing the request
-    ///
-    /// # Errors
-    /// * `NotEnoughSigners` - If insufficient validators have signed
-    /// * `InvalidSigner` - If a signer is not in the validator set
-    pub fn close_request(ctx: Context<CloseRequest>) -> Result<()> {
-        CloseRequest::process_instruction(ctx)
-    }
-
     /// Create or approve a bridging transaction.
     ///
     /// This instruction creates or approves a bridging transaction for transferring tokens from the vault

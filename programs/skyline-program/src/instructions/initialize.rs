@@ -80,6 +80,7 @@ impl<'info> Initialize<'info> {
 
         // Store the last id
         validator_set.last_batch_id = last_id;
+        validator_set.bridge_request_count = 0;
 
         // Store the vault address
         vault.address = vault.key();

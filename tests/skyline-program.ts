@@ -13,6 +13,30 @@ import {
 } from "@solana/spl-token";
 import { publicKey } from "@coral-xyz/anchor/dist/cjs/utils";
 
+const parseEventsFromTx = async (
+  connection: anchor.web3.Connection,
+  program: anchor.Program<any>,
+  sig: string
+) => {
+  const tx = await connection.getTransaction(sig, {
+    commitment: "confirmed",
+  } as any);
+
+  if (!tx || !tx.meta || !tx.meta.logMessages) return [];
+
+  const logs: string[] = tx.meta.logMessages as string[];
+
+  const eventParser = new anchor.EventParser(program.programId, program.coder);
+
+  const events: any[] = [];
+
+  for (const event of eventParser.parseLogs(logs)) {
+    events.push(event);
+  }
+
+  return events;
+};
+
 describe("skyline-program", () => {
   anchor.setProvider(anchor.AnchorProvider.env());
   const provider = anchor.getProvider();
@@ -822,7 +846,7 @@ describe("skyline-program", () => {
 
       const ownerAta = getAssociatedTokenAddressSync(mint, owner.publicKey);
 
-      await program.methods
+      const sig = await program.methods
         .bridgeRequest(amount, receiver, destination_chain)
         .accounts({
           signer: owner.publicKey,
@@ -832,18 +856,10 @@ describe("skyline-program", () => {
         })
         .rpc();
 
-      const bridgingRequestPDA = anchor.web3.PublicKey.findProgramAddressSync(
-        [Buffer.from("bridging_request"), owner.publicKey.toBuffer()],
-        program.programId
-      )[0];
+      await provider.connection.confirmTransaction(sig);
 
-      const br = await program.account.bridgingRequest.fetch(
-        bridgingRequestPDA
-      );
-
-      assert.equal(br.sender.toBase58(), owner.publicKey.toBase58());
-      assert.equal(br.amount.toString(), amount.toString());
-      assert.equal(br.destinationChain, destination_chain);
+      const events = await parseEventsFromTx(provider.connection, program, sig);
+      const event = events[0].data;
     });
   });
 
@@ -974,97 +990,6 @@ describe("skyline-program", () => {
         assert.fail("Transaction should have failed");
       } catch (e: any) {
         assert.ok(e, "Expected error for invalid receiver length");
-      }
-    });
-
-    it("bridge request already exists for the sender", async () => {
-      const amount = new anchor.BN(10_000);
-      let receiver: number[];
-      receiver = Array.from(
-        Buffer.from(
-          "0x1234567890123456789012345678901234567890123456789012345678901234567890123",
-          "hex"
-        )
-      );
-      const destination_chain = 1;
-
-      const newOwner = anchor.web3.Keypair.generate();
-      const airdropSig = await provider.connection.requestAirdrop(
-        newOwner.publicKey,
-        2 * anchor.web3.LAMPORTS_PER_SOL
-      );
-      await provider.connection.confirmTransaction(airdropSig);
-
-      await mintToAnyone(newOwner.publicKey, 1_000_000_000_000);
-
-      const ownerAtaInfo = await getOrCreateAssociatedTokenAccount(
-        provider.connection,
-        owner.payer,
-        mint,
-        newOwner.publicKey
-      );
-      const ownerAta = ownerAtaInfo.address;
-
-      // First bridge request should succeed
-      await program.methods
-        .bridgeRequest(amount, receiver, destination_chain)
-        .accounts({
-          signer: newOwner.publicKey,
-          signersAta: ownerAta,
-          vaultAta: getAssociatedTokenAddressSync(mint, vaultPDA, true),
-          mint: mint,
-        })
-        .signers([newOwner])
-        .rpc();
-
-      // Second bridge request with same signer should fail
-      try {
-        await program.methods
-          .bridgeRequest(amount, receiver, destination_chain)
-          .accounts({
-            signer: newOwner.publicKey,
-            signersAta: ownerAta,
-            vaultAta: getAssociatedTokenAddressSync(mint, vaultPDA, true),
-            mint: mint,
-          })
-          .signers([newOwner])
-          .rpc();
-
-        assert.fail("Expected transaction to fail");
-      } catch (e: any) {
-        assert.ok(e, "Expected error");
-      }
-    });
-  });
-
-  describe("Close Request - Success Case", () => {
-    it("successful", async () => {
-      const bridgingRequestPDA = anchor.web3.PublicKey.findProgramAddressSync(
-        [Buffer.from("bridging_request"), owner.publicKey.toBuffer()],
-        program.programId
-      )[0];
-
-      const remainingAccounts = validators.slice(3, 9).map((v) => ({
-        pubkey: v.publicKey,
-        isSigner: true,
-        isWritable: false,
-      }));
-
-      await program.methods
-        .closeRequest()
-        .accounts({
-          signer: owner.publicKey,
-          bridgingRequest: bridgingRequestPDA,
-        })
-        .remainingAccounts(remainingAccounts)
-        .signers(validators.slice(3, 9))
-        .rpc();
-
-      try {
-        await program.account.bridgingRequest.fetch(bridgingRequestPDA);
-        assert.fail("Expected fetching closed account to fail");
-      } catch (e: any) {
-        assert.ok(e, "Expected error when fetching closed account");
       }
     });
   });

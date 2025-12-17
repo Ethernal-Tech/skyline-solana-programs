@@ -31,6 +31,8 @@ pub struct ValidatorSet {
     pub bump: u8,
     /// Last batch id
     pub last_batch_id: u64,
+    /// Count of bridge requests processed
+    pub bridge_request_count: u64,
 }
 
 #[account]
@@ -40,38 +42,6 @@ pub struct Vault {
     pub address: Pubkey,
     /// Vault bump
     pub bump: u8,
-}
-
-/// Represents a cross-chain bridging request.
-///
-/// The `BridgingRequest` account is created when a user initiates a cross-chain
-/// token transfer. It contains all the information needed to process the transfer
-/// on the destination chain, including the amount, recipient, and destination chain ID.
-///
-/// This account is created per transfer request and can be closed after the
-/// transfer is completed or cancelled.
-///
-/// # Fields
-///
-/// * `sender` - Public key of the user initiating the bridge request
-/// * `amount` - Amount of tokens to be bridged
-/// * `receiver` - Receiver's address on the destination chain (57 bytes)
-/// * `destination_chain` - Chain ID of the destination blockchain
-/// * `mint_token` - Public key of the token mint being bridged
-#[account]
-#[derive(InitSpace)]
-pub struct BridgingRequest {
-    /// Public key of the user who initiated the bridge request
-    pub sender: Pubkey,
-    /// Amount of tokens to be bridged to the destination chain
-    pub amount: u64,
-    /// Receiver's address on the destination chain (fixed 57-byte array)
-    /// This format accommodates various address formats across different blockchains
-    pub receiver: [u8; 57],
-    /// Chain ID identifying the destination blockchain network
-    pub destination_chain: u8,
-    /// Public key of the token mint being bridged
-    pub mint_token: Pubkey,
 }
 
 #[account]

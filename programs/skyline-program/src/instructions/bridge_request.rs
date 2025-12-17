@@ -22,6 +22,14 @@ pub struct BridgeRequest<'info> {
     #[account(mut)]
     pub signer: Signer<'info>,
 
+    /// The validator set account
+    #[account(
+        mut, 
+        seeds = [VALIDATOR_SET_SEED], 
+        bump = validator_set.bump
+    )]
+    pub validator_set: Account<'info, ValidatorSet>,
+
     /// The user's associated token account for the tokens being bridged
     #[account(
         mut,
@@ -38,15 +46,6 @@ pub struct BridgeRequest<'info> {
     /// CHECK: This account is validated through the associated token account creation
     #[account(mut)]
     pub vault_ata: UncheckedAccount<'info>,
-
-    /// The bridging request account to be created
-    #[account(init,
-        payer = signer,
-        space = DISC as usize + BridgingRequest::INIT_SPACE,
-        seeds = [BRIDGING_REQUEST_SEED, signer.key().as_ref()],
-        bump
-    )]
-    pub bridging_request: Account<'info, BridgingRequest>,
 
     /// The token mint for the tokens being bridged
     #[account(mut)]
@@ -99,6 +98,7 @@ impl<'info> BridgeRequest<'info> {
         let vault = &ctx.accounts.vault;
         let vault_ata = &ctx.accounts.vault_ata;
         let associated_token_program = &ctx.accounts.associated_token_program;
+        let validator_set = &mut ctx.accounts.validator_set;
 
         // Validate that the user has sufficient tokens to bridge
         require!(from.amount >= amount, CustomError::InsufficientFunds);
@@ -130,13 +130,17 @@ impl<'info> BridgeRequest<'info> {
         let cpi_context = CpiContext::new(token_program.to_account_info(), cpi_accounts);
         token::transfer(cpi_context, amount)?;
 
-        // Create and populate the bridging request account
-        let bridging_request = &mut ctx.accounts.bridging_request;
-        bridging_request.sender = ctx.accounts.signer.key();
-        bridging_request.amount = amount;
-        bridging_request.receiver = receiver;
-        bridging_request.destination_chain = destination_chain;
-        bridging_request.mint_token = ctx.accounts.mint.key();
+        emit!(BridgeRequestEvent{
+            sender: signer.key(),
+            amount,
+            receiver,
+            destination_chain,
+            mint_token: mint.key(),
+            batch_request_id: validator_set.bridge_request_count,
+        });
+
+        // Increment the bridge request count
+       validator_set.bridge_request_count += 1;
 
         Ok(())
     }

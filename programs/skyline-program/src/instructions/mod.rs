@@ -16,10 +16,6 @@ pub use bridge_request::*;
 pub mod bridge_vsu;
 pub use bridge_vsu::*;
 
-/// Close bridging request accounts.
-pub mod close_requests;
-pub use close_requests::*;
-
 /// Create or approve a bridging transaction.
 pub mod bridge_transaction;
 pub use bridge_transaction::*;
