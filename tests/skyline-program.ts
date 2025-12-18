@@ -65,6 +65,11 @@ describe("skyline-program", () => {
     (m) => (mint = m)
   );
 
+  let mintVaultAuthority: web3.PublicKey;
+  createMint(provider.connection, owner.payer, vaultPDA, null, 9).then(
+    (m) => (mintVaultAuthority = m)
+  );
+
   const mintToVault = async (amount: number) => {
     const ata = await getOrCreateAssociatedTokenAccount(
       provider.connection,
@@ -187,7 +192,11 @@ describe("skyline-program", () => {
     });
   });
 
-  const bridgeToSolana = async (signers: web3.Keypair[], batchId: number) => {
+  const bridgeToSolana = async (
+    signers: web3.Keypair[],
+    batchId: number,
+    mintToken?: web3.PublicKey
+  ) => {
     const remainingAccounts = signers.map((v) => ({
       pubkey: v.publicKey,
       isSigner: true,
@@ -199,9 +208,16 @@ describe("skyline-program", () => {
       .accounts({
         payer: owner.publicKey,
         recipient: recipient.publicKey,
-        mintToken: mint,
-        recipientAta: getAssociatedTokenAddressSync(mint, recipient.publicKey),
-        vaultAta: getAssociatedTokenAddressSync(mint, vaultPDA, true),
+        mintToken: mintToken || mint,
+        recipientAta: getAssociatedTokenAddressSync(
+          mintToken || mint,
+          recipient.publicKey
+        ),
+        vaultAta: getAssociatedTokenAddressSync(
+          mintToken || mint,
+          vaultPDA,
+          true
+        ),
       })
       .signers(signers)
       .remainingAccounts(remainingAccounts)
@@ -389,17 +405,30 @@ describe("skyline-program", () => {
     });
   });
 
+  describe("Bridge our token (mint)", () => {
+    it("successful", async () => {
+      await bridgeToSolana(validators.slice(0, 5), 9, mintVaultAuthority);
+
+      const tokenBalance = await provider.connection.getTokenAccountBalance(
+        getAssociatedTokenAddressSync(mintVaultAuthority, recipient.publicKey)
+      );
+
+      assert.equal(tokenBalance.value.amount, "100");
+      assert.lengthOf(await program.account.bridgingTransaction.all(), 0);
+    });
+  });
+
   describe("Replay attack attempt: Bridge to Solana using 1 tx with a batch ID that is too low", () => {
     it("unsuccessful", async () => {
       assert.equal(
         (
           await program.account.validatorSet.all()
         )[0].account.lastBatchId.toNumber(),
-        8
+        9
       );
 
       try {
-        await bridgeToSolana(validators.slice(0, 5), 8);
+        await bridgeToSolana(validators.slice(0, 5), 9);
 
         assert.fail("Transaction should have failed with InvalidBatchId error");
       } catch (e) {
@@ -410,7 +439,7 @@ describe("skyline-program", () => {
         (
           await program.account.validatorSet.all()
         )[0].account.lastBatchId.toNumber(),
-        8
+        9
       );
 
       const tokenBalance = await provider.connection.getTokenAccountBalance(
@@ -451,7 +480,7 @@ describe("skyline-program", () => {
           [validators[0], validators[1], validators[15]],
           [validators[7].publicKey, validators[8].publicKey],
           [],
-          9
+          10
         );
 
         assert.fail("Transaction should have failed with InvalidSigner error");
@@ -468,7 +497,7 @@ describe("skyline-program", () => {
           [validators[0], validators[1], validators[1]],
           [validators[7].publicKey, validators[8].publicKey],
           [],
-          9
+          10
         );
 
         assert.fail(
@@ -486,7 +515,7 @@ describe("skyline-program", () => {
         [validators[0], validators[1], validators[2]],
         [validators[7].publicKey, validators[8].publicKey],
         [],
-        9
+        10
       );
 
       for (let i = 0; i < 3; i++) {
@@ -504,7 +533,7 @@ describe("skyline-program", () => {
           [validators[3], validators[4], validators[15]],
           [validators[7].publicKey, validators[8].publicKey],
           [],
-          9
+          10
         );
 
         assert.fail("Transaction should have failed with InvalidSigner error");
@@ -534,7 +563,7 @@ describe("skyline-program", () => {
           [validators[3], validators[4], validators[4]],
           [validators[7].publicKey, validators[8].publicKey],
           [],
-          9
+          10
         );
 
         assert.fail(
@@ -566,7 +595,7 @@ describe("skyline-program", () => {
           [validators[3], validators[4], validators[1]],
           [validators[7].publicKey, validators[8].publicKey],
           [],
-          9
+          10
         );
 
         assert.fail(
@@ -597,21 +626,21 @@ describe("skyline-program", () => {
         (
           await program.account.validatorSet.all()
         )[0].account.lastBatchId.toNumber(),
-        8
+        9
       );
 
       await changeValidatorSet(
         [validators[3], validators[4], validators[5]],
         [validators[7].publicKey, validators[8].publicKey],
         [],
-        9
+        10
       );
 
       assert.equal(
         (
           await program.account.validatorSet.all()
         )[0].account.lastBatchId.toNumber(),
-        9
+        10
       );
 
       assert.lengthOf(await program.account.validatorDelta.all(), 0);
@@ -641,21 +670,21 @@ describe("skyline-program", () => {
         (
           await program.account.validatorSet.all()
         )[0].account.lastBatchId.toNumber(),
-        9
+        10
       );
 
       await changeValidatorSet(
         validators.slice(0, 7),
         [validators[9].publicKey],
         [],
-        10
+        11
       );
 
       assert.equal(
         (
           await program.account.validatorSet.all()
         )[0].account.lastBatchId.toNumber(),
-        10
+        11
       );
 
       assert.lengthOf(await program.account.validatorDelta.all(), 0);
@@ -685,21 +714,21 @@ describe("skyline-program", () => {
         (
           await program.account.validatorSet.all()
         )[0].account.lastBatchId.toNumber(),
-        10
+        11
       );
 
       await changeValidatorSet(
         validators.slice(0, 7),
         [validators[10].publicKey],
         [new anchor.BN(0), new anchor.BN(1), new anchor.BN(2)],
-        11
+        12
       );
 
       assert.equal(
         (
           await program.account.validatorSet.all()
         )[0].account.lastBatchId.toNumber(),
-        11
+        12
       );
 
       assert.lengthOf(await program.account.validatorDelta.all(), 0);
@@ -729,7 +758,7 @@ describe("skyline-program", () => {
         (
           await program.account.validatorSet.all()
         )[0].account.lastBatchId.toNumber(),
-        11
+        12
       );
 
       try {
@@ -743,7 +772,7 @@ describe("skyline-program", () => {
             new anchor.BN(3),
             new anchor.BN(4),
           ],
-          12
+          13
         );
 
         assert.fail(
@@ -757,7 +786,7 @@ describe("skyline-program", () => {
         (
           await program.account.validatorSet.all()
         )[0].account.lastBatchId.toNumber(),
-        11
+        12
       );
 
       assert.lengthOf(await program.account.validatorDelta.all(), 0);
@@ -832,13 +861,11 @@ describe("skyline-program", () => {
   describe("Bridge Request - Success Case", () => {
     it("successful", async () => {
       const amount = new anchor.BN(1_000_000_000);
-      let receiver: number[];
-      receiver = Array.from(
-        Buffer.from(
-          "0x1234567890123456789012345678901234567890123456789012345678901234567890123",
-          "hex"
-        )
-      );
+      let receiver = Buffer.from([
+        1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
+        21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38,
+        39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50,
+      ]);
 
       await mintToAnyone(owner.publicKey, 1_000_000_000_000);
 
@@ -860,18 +887,74 @@ describe("skyline-program", () => {
 
       const events = await parseEventsFromTx(provider.connection, program, sig);
       const event = events[0].data;
+
+      assert.equal(event.batchRequestId.toString(), "0");
+      assert.equal(event.sender.toBase58(), owner.publicKey.toBase58());
+      assert.equal(event.amount.toString(), "1000000000");
+      assert.equal(event.receiver.toString(), receiver.toString());
+      assert.equal(event.destinationChain, 1);
+      assert.equal(event.mintToken.toBase58(), mint.toBase58());
+    });
+  });
+
+  describe("Bridge Request - Vault Mint Authority", () => {
+    it("successful", async () => {
+      const amount = new anchor.BN(100);
+      let receiver = Buffer.from([
+        1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
+        21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38,
+        39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50,
+      ]);
+
+      const destination_chain = 1;
+
+      const airdropSig = await provider.connection.requestAirdrop(
+        recipient.publicKey,
+        2 * anchor.web3.LAMPORTS_PER_SOL
+      );
+      await provider.connection.confirmTransaction(airdropSig);
+
+      const recipientAta = getAssociatedTokenAddressSync(
+        mintVaultAuthority,
+        recipient.publicKey
+      );
+
+      const sig = await program.methods
+        .bridgeRequest(amount, receiver, destination_chain)
+        .accounts({
+          signer: recipient.publicKey,
+          signersAta: recipientAta,
+          vaultAta: getAssociatedTokenAddressSync(
+            mintVaultAuthority,
+            vaultPDA,
+            true
+          ),
+          mint: mintVaultAuthority,
+        })
+        .signers([recipient])
+        .rpc();
+
+      await provider.connection.confirmTransaction(sig);
+
+      const events = await parseEventsFromTx(provider.connection, program, sig);
+      const event = events[0].data;
+
+      assert.equal(event.batchRequestId.toString(), "1");
+      assert.equal(event.sender.toBase58(), recipient.publicKey.toBase58());
+      assert.equal(event.amount.toString(), "100");
+      assert.deepEqual(event.receiver.toString(), receiver.toString());
+      assert.equal(event.destinationChain, 1);
+      assert.equal(event.mintToken.toBase58(), mintVaultAuthority.toBase58());
     });
   });
 
   describe("Bridge Request - Bad Cases", () => {
     it("bridging an amount greater than the available balance", async () => {
-      let receiver: number[];
-      receiver = Array.from(
-        Buffer.from(
-          "0x1234567890123456789012345678901234567890123456789012345678901234567890123",
-          "hex"
-        )
-      );
+      let receiver = Buffer.from([
+        1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
+        21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38,
+        39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50,
+      ]);
       const destination_chain = 1;
 
       const newOwner = anchor.web3.Keypair.generate();
@@ -914,13 +997,11 @@ describe("skyline-program", () => {
 
     it("ATA is not initialized", async () => {
       const amount = new anchor.BN(10_000);
-      let receiver: number[];
-      receiver = Array.from(
-        Buffer.from(
-          "0x1234567890123456789012345678901234567890123456789012345678901234567890123",
-          "hex"
-        )
-      );
+      let receiver = Buffer.from([
+        1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
+        21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38,
+        39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50,
+      ]);
       const destination_chain = 1;
 
       const newOwner = anchor.web3.Keypair.generate();
@@ -957,7 +1038,7 @@ describe("skyline-program", () => {
 
     it("invalid length for the receiver field", async () => {
       const amount = new anchor.BN(10_000);
-      let receiver: number[] = [1, 2, 3, 4, 5];
+      let receiver = Buffer.from([1, 2, 3, 4, 5]);
       const destination_chain = 1;
 
       const newOwner = anchor.web3.Keypair.generate();

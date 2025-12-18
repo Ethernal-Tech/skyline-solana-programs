@@ -26,7 +26,7 @@ pub struct BridgeRequestEvent {
     pub amount: u64,
     /// Receiver's address on the destination chain (fixed 57-byte array)
     /// This format accommodates various address formats across different blockchains
-    pub receiver: [u8; 57],
+    pub receiver: Vec<u8>,
     /// Chain ID identifying the destination blockchain network
     pub destination_chain: u8,
     /// Public key of the token mint being bridged

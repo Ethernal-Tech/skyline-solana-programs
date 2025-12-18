@@ -88,7 +88,7 @@ impl<'info> BridgeRequest<'info> {
     pub fn process_instruction(
         ctx: Context<BridgeRequest>,
         amount: u64,
-        receiver: [u8; 57],
+        receiver: Vec<u8>,
         destination_chain: u8,
     ) -> Result<()> {
         let mint = &ctx.accounts.mint;
@@ -119,16 +119,25 @@ impl<'info> BridgeRequest<'info> {
             associated_token::create(cpi_context)?;
         }
 
-        // Prepare the burn instruction
-        let cpi_accounts = Transfer {
-            from: from.to_account_info(),
-            to: vault_ata.to_account_info(),
-            authority: signer.to_account_info(),
-        };
+        if is_vault_mint_authority(mint, &vault.to_account_info()) {
+            let cpi_accounts = token::Burn {
+                mint: mint.to_account_info(),
+                from: from.to_account_info(),
+                authority: signer.to_account_info(),
+            };
 
-        // Execute the token burn
-        let cpi_context = CpiContext::new(token_program.to_account_info(), cpi_accounts);
-        token::transfer(cpi_context, amount)?;
+            let cpi_context = CpiContext::new(token_program.to_account_info(), cpi_accounts);
+            token::burn(cpi_context, amount)?;
+        } else {
+            let cpi_accounts = Transfer {
+                from: from.to_account_info(),
+                to: vault_ata.to_account_info(),
+                authority: signer.to_account_info(),
+            };
+
+            let cpi_context = CpiContext::new(token_program.to_account_info(), cpi_accounts);
+            token::transfer(cpi_context, amount)?;
+        }
 
         emit!(BridgeRequestEvent{
             sender: signer.key(),

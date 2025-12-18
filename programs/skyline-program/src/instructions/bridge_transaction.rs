@@ -4,7 +4,7 @@
 //! This instruction is typically called after tokens have been burned on the source chain
 //! and requires validator consensus to execute.
 
-use anchor_lang::prelude::*;
+use anchor_lang::{prelude::*, solana_program::program_option::COption};
 use anchor_spl::{
     associated_token::{self, AssociatedToken},
     token::{self, Mint, Token, Transfer},
@@ -155,26 +155,42 @@ impl<'info> BridgeTransaction<'info> {
             associated_token::create(cpi_context)?;
         }
 
-        // Prepare the mint_to instruction with validator set as authority
-        let cpi_accounts = Transfer {
-            from: vault_ata.to_account_info(),
-            to: recipient_ata.to_account_info(),
-            authority: vault.to_account_info(),
-        };
-
-        // Create signer seeds for the validator set PDA
         let seeds = &[VAULT_SEED, &[vault.bump]];
         let signer_seeds = &[&seeds[..]];
 
-        // Mint tokens to the recipient
-        token::transfer(
-            CpiContext::new_with_signer(
-                token_program.to_account_info(),
-                cpi_accounts,
-                signer_seeds,
-            ),
-            bridging_transaction.amount,
-        )?;
+        if is_vault_mint_authority(mint, &vault.to_account_info()) {
+            let cpi_accounts = token::MintTo {
+                mint: mint.to_account_info(),
+                to: recipient_ata.to_account_info(),
+                authority: vault.to_account_info(),
+            };
+
+            token::mint_to(
+                CpiContext::new_with_signer(
+                    token_program.to_account_info(),
+                    cpi_accounts,
+                    signer_seeds,
+                ),
+                bridging_transaction.amount,
+            )?;
+        } else {
+            // Prepare the mint_to instruction with validator set as authority
+            let cpi_accounts = Transfer {
+                from: vault_ata.to_account_info(),
+                to: recipient_ata.to_account_info(),
+                authority: vault.to_account_info(),
+            };
+
+            // Transfer tokens to the recipient
+            token::transfer(
+                CpiContext::new_with_signer(
+                    token_program.to_account_info(),
+                    cpi_accounts,
+                    signer_seeds,
+                ),
+                bridging_transaction.amount,
+            )?;
+        }
 
         emit!(TransactionExecutedEvent {
             transaction_id: bridging_transaction.id,
