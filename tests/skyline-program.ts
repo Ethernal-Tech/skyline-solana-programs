@@ -934,7 +934,7 @@ describe("skyline-program", () => {
         .signers([recipient])
         .rpc();
 
-      await provider.connection.confirmTransaction(sig);
+      await provider.connection.confirmTransaction(sig, "finalized");
 
       const events = await parseEventsFromTx(provider.connection, program, sig);
       const event = events[0].data;

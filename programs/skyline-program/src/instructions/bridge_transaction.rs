@@ -4,7 +4,7 @@
 //! This instruction is typically called after tokens have been burned on the source chain
 //! and requires validator consensus to execute.
 
-use anchor_lang::{prelude::*, solana_program::program_option::COption};
+use anchor_lang::prelude::*;
 use anchor_spl::{
     associated_token::{self, AssociatedToken},
     token::{self, Mint, Token, Transfer},
