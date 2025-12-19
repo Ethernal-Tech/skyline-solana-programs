@@ -15,45 +15,9 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
-
-      - name: Install Solana CLI
-        uses: mvines/solana-action@v1
-        with:
-          solana_version: "stable"
-          cache: true
-
-      - name: Install Anchor
-        uses: coral-xyz/anchor-action@v0.1.0
+      - uses: actions/checkout@v3
+      - uses: metadaoproject/anchor-test@v2.3
         with:
           anchor-version: "0.31.1"
-
-      - name: Install Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "18"
-          cache: "yarn"
-
-      - name: Install dependencies
-        run: yarn install --frozen-lockfile
-
-      - name: Generate Solana wallet
-        run: |
-          mkdir -p ~/.config/solana
-          solana-keygen new --outfile ~/.config/solana/id.json --no-bip39-passphrase --force
-
-      - name: Build program
-        run: anchor build
-
-      - name: Run tests
-        run: anchor test
-        env:
-          ANCHOR_PROVIDER_URL: http://127.0.0.1:8899
-          ANCHOR_WALLET: ~/.config/solana/id.json
-        timeout-minutes: 30
+          solana-cli-version: "2.3.12"
+          node-version: "24.11.1"
