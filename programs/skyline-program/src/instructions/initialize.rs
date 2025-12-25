@@ -56,8 +56,9 @@ impl<'info> Initialize<'info> {
     ///
     /// # Security Checks
     /// * Validates that all validators are unique (no duplicates)
-    /// * Automatically calculates the consensus threshold as 2/3 of validators (rounded up)
+    /// * Automatically calculates the consensus threshold using the formula: num_signers - floor((num_signers - 1) / 3)
     /// * Stores the bump seed for PDA derivation
+    /// * Initializes the vault account
     pub fn process_instruction(ctx: Context<Self>, validators: Vec<Pubkey>, last_id: u64) -> Result<()> {
         let validator_set = &mut ctx.accounts.validator_set;
         let vault = &mut ctx.accounts.vault;

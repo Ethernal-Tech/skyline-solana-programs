@@ -8,7 +8,7 @@
 pub mod initialize;
 pub use initialize::*;
 
-/// Create cross-chain bridging requests and burn source tokens.
+/// Create cross-chain bridging requests and transfer/burn source tokens.
 pub mod bridge_request;
 pub use bridge_request::*;
 

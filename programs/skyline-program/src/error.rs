@@ -15,8 +15,8 @@ use anchor_lang::prelude::*;
 pub enum CustomError {
     /// Maximum number of validators exceeded.
     ///
-    /// This error occurs when trying to set more than 10 validators in the validator set.
-    /// The limit is imposed by Solana's transaction signing constraints.
+    /// This error occurs when trying to set more than 128 validators in the validator set.
+    /// The limit is defined by the `MAX_VALIDATORS` constant.
     #[msg("Maximum number of validators exceeded")]
     MaxValidatorsExceeded,
 
@@ -37,8 +37,8 @@ pub enum CustomError {
     /// Not enough signers provided.
     ///
     /// This error occurs when the number of validator signatures provided is less than
-    /// the required consensus threshold. The threshold is automatically calculated as
-    /// 2/3 of the validator count, rounded up.
+    /// the required consensus threshold. The threshold is automatically calculated using
+    /// the formula: num_signers - floor((num_signers - 1) / 3).
     #[msg("Not enough signers provided")]
     NotEnoughSigners,
 
@@ -57,9 +57,11 @@ pub enum CustomError {
     #[msg("Insufficient funds in the account")]
     InsufficientFunds,
 
-    /// Transaction in progress.
+    /// Invalid batch ID provided.
     ///
-    /// This error occurs when a transaction is already in progress.
+    /// This error occurs when the batch_id is not greater than the last_batch_id.
+    /// Batch IDs must be strictly increasing to prevent replay attacks and ensure
+    /// sequential processing of operations.
     #[msg("Invalid batch id; Batch Id must be higher than last batch id")]
     InvalidBatchId,
 

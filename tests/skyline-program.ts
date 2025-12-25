@@ -61,33 +61,45 @@ describe("skyline-program", () => {
   const recipient = anchor.web3.Keypair.generate();
 
   let mint: web3.PublicKey;
-  createMint(provider.connection, owner.payer, owner.publicKey, null, 9).then(
-    (m) => (mint = m)
-  );
-
   let mintVaultAuthority: web3.PublicKey;
-  createMint(provider.connection, owner.payer, vaultPDA, null, 9).then(
-    (m) => (mintVaultAuthority = m)
-  );
-
-  const mintToVault = async (amount: number) => {
-    const ata = await getOrCreateAssociatedTokenAccount(
+  before(async () => {
+    mint = await createMint(
       provider.connection,
       owner.payer,
-      mint,
+      owner.publicKey,
+      null,
+      9
+    );
+
+    mintVaultAuthority = await createMint(
+      provider.connection,
+      owner.payer,
       vaultPDA,
-      true
+      null,
+      9
     );
 
-    await mintTo(
-      provider.connection,
-      owner.payer,
-      mint,
-      ata.address,
-      owner.payer,
-      amount
-    );
-  };
+    const mintToVault = async (amount: number) => {
+      const ata = await getOrCreateAssociatedTokenAccount(
+        provider.connection,
+        owner.payer,
+        mint,
+        vaultPDA,
+        true
+      );
+
+      await mintTo(
+        provider.connection,
+        owner.payer,
+        mint,
+        ata.address,
+        owner.payer,
+        amount
+      );
+    };
+
+    await mintToVault(1000);
+  });
 
   describe("Initialize - Bad Cases", () => {
     it("provided less (3) than MIN_VALIDATORS (4) validators", async () => {
@@ -351,8 +363,6 @@ describe("skyline-program", () => {
     });
 
     it("send a tx with 3 sigs -> tx succeeds", async () => {
-      await mintToVault(1000);
-
       assert.equal(
         (
           await program.account.validatorSet.all()

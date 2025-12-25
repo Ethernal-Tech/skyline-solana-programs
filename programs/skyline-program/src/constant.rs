@@ -5,6 +5,12 @@
 //! other configuration parameters.
 
 use anchor_lang::constant;
+
+/// Maximum number of validators allowed in the validator set.
+///
+/// This constant defines the upper limit for the number of validators that can be
+/// included in the validator set. The limit is set to 128 to balance security,
+/// decentralization, and practical constraints.
 #[constant]
 pub const MAX_VALIDATORS: u32 = 128;
 

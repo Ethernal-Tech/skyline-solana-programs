@@ -9,23 +9,22 @@
 //! The Skyline program provides the following core functionality:
 //!
 //! - **Validator Management**: Initialize and manage a set of validators that control bridge operations
-//! - **Token Bridging**: Transfer tokens to vault on source chain and mint/transfer equivalent tokens on destination chain
+//! - **Token Bridging**: Transfer tokens to vault or burn tokens on source chain and mint/transfer equivalent tokens on destination chain
 //! - **Bridge Requests**: Create and manage cross-chain transfer requests
-//! - **Consensus Mechanism**: Require 2/3 validator approval for critical operations
+//! - **Consensus Mechanism**: Require threshold validator approval for critical operations (calculated as ceil(2/3) of validators)
 //!
 //! ## Architecture
 //!
 //! The program uses the following main account types:
-//! - `ValidatorSet`: Stores the list of validators, consensus threshold, and last batch ID
+//! - `ValidatorSet`: Stores the list of validators, consensus threshold, last batch ID, and bridge request count
 //! - `Vault`: Represents the vault account that holds bridged tokens
-//! - `BridgingRequest`: Represents individual cross-chain transfer requests created by users
 //! - `BridgingTransaction`: Represents validator-approved transactions for minting/transferring tokens to recipients
 //! - `ValidatorDelta`: Represents pending validator set updates that require consensus
 //!
 //! ## Security Model
 //!
-//! - Validator set requires minimum 4 and maximum 10 validators
-//! - Consensus threshold is automatically set to 2/3 of validators (rounded up)
+//! - Validator set requires minimum 4 and maximum 128 validators
+//! - Consensus threshold is automatically calculated using the formula: num_signers - floor((num_signers - 1) / 3)
 //! - All critical operations require validator signatures meeting the threshold
 //! - Validator set changes require approval from current validator set
 //! - Batch IDs ensure operations are processed in order and prevent replay attacks
@@ -73,7 +72,7 @@ pub mod skyline_program {
     ///
     /// # Arguments
     /// * `ctx` - The context containing accounts for initialization
-    /// * `validators` - Vector of validator public keys (4-10 validators required)
+    /// * `validators` - Vector of validator public keys (4-128 validators required)
     /// * `last_id` - Optional initial batch ID (defaults to 0 if not provided)
     ///
     /// # Errors
@@ -91,13 +90,14 @@ pub mod skyline_program {
     /// Create a cross-chain bridging request and transfer source tokens to vault.
     ///
     /// This instruction creates a bridging request for transferring tokens to another chain.
-    /// The source tokens are transferred to the vault account immediately, and a request is created
-    /// that can be processed by validators to transfer equivalent tokens on the destination chain.
+    /// The source tokens are either burned (if the vault is the mint authority) or transferred
+    /// to the vault account, and a request event is emitted that can be processed by validators
+    /// to mint/transfer equivalent tokens on the destination chain.
     ///
     /// # Arguments
     /// * `ctx` - The context containing accounts for the bridge request
     /// * `amount` - The amount of tokens to bridge
-    /// * `receiver` - The receiver's address on the destination chain (57 bytes)
+    /// * `receiver` - The receiver's address on the destination chain (variable length byte vector)
     /// * `destination_chain` - The chain ID of the destination blockchain
     ///
     /// # Errors
@@ -146,8 +146,8 @@ pub mod skyline_program {
     ///
     /// This instruction creates or approves a bridging transaction for transferring tokens from the vault
     /// to a recipient. The first call creates the transaction, and subsequent calls from validators approve it.
-    /// Once the consensus threshold is met, the tokens are automatically transferred from the vault to the
-    /// recipient's associated token account, and the transaction account is closed.
+    /// Once the consensus threshold is met, the tokens are automatically minted (if vault is mint authority)
+    /// or transferred from the vault to the recipient's associated token account, and the transaction account is closed.
     ///
     /// # Arguments
     /// * `ctx` - The context containing accounts for the bridging transaction

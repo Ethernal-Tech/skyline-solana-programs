@@ -1,9 +1,9 @@
 //! Bridge request instruction for creating cross-chain transfer requests.
 //!
 //! This module contains the logic for creating bridging requests that initiate
-//! cross-chain token transfers. Users can burn tokens on the source chain and
-//! create a request that validators can process to mint equivalent tokens on
-//! the destination chain.
+//! cross-chain token transfers. Users transfer tokens to the vault (or burn them
+//! if the vault is the mint authority) and emit a request event that validators
+//! can process to mint/transfer equivalent tokens on the destination chain.
 
 use crate::*;
 use anchor_spl::{
@@ -51,7 +51,7 @@ pub struct BridgeRequest<'info> {
     #[account(mut)]
     pub mint: Account<'info, Mint>,
 
-    /// The token program for burning operations
+    /// The token program for token operations (burn/transfer)
     pub token_program: Program<'info, anchor_spl::token::Token>,
 
     /// The system program for account creation
@@ -64,14 +64,15 @@ pub struct BridgeRequest<'info> {
 impl<'info> BridgeRequest<'info> {
     /// Process the bridge_request instruction.
     ///
-    /// This function validates the user has sufficient tokens, burns the specified amount,
-    /// and creates a bridging request account with the transfer details. The request can
-    /// then be processed by validators to mint equivalent tokens on the destination chain.
+    /// This function validates the user has sufficient tokens, then either burns them
+    /// (if the vault is the mint authority) or transfers them to the vault's associated
+    /// token account. It then emits a bridge request event that validators can process
+    /// to mint/transfer equivalent tokens on the destination chain.
     ///
     /// # Arguments
     /// * `ctx` - The instruction context containing all required accounts
     /// * `amount` - The amount of tokens to bridge to the destination chain
-    /// * `receiver` - The receiver's address on the destination chain (57 bytes)
+    /// * `receiver` - The receiver's address on the destination chain (variable length byte vector)
     /// * `destination_chain` - The chain ID of the destination blockchain
     ///
     /// # Returns
@@ -82,9 +83,10 @@ impl<'info> BridgeRequest<'info> {
     ///
     /// # Process Flow
     /// 1. Validates that the user has sufficient token balance
-    /// 2. Burns the specified amount of tokens from the user's account
-    /// 3. Creates a bridging request account with transfer details
-    /// 4. Stores the request information for validator processing
+    /// 2. Creates the vault's associated token account if it doesn't exist
+    /// 3. Burns tokens if vault is mint authority, otherwise transfers to vault
+    /// 4. Emits a bridge request event with transfer details
+    /// 5. Increments the bridge request count
     pub fn process_instruction(
         ctx: Context<BridgeRequest>,
         amount: u64,

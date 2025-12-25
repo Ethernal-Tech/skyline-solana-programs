@@ -14,9 +14,11 @@ use crate::*;
 ///
 /// # Fields
 ///
-/// * `signers` - Vector of validator public keys (max 10 validators)
-/// * `threshold` - Number of signatures required for consensus (automatically set to 2/3)
+/// * `signers` - Vector of validator public keys (max 128 validators)
+/// * `threshold` - Number of signatures required for consensus (automatically calculated)
 /// * `bump` - Bump seed for the PDA derivation
+/// * `last_batch_id` - The last processed batch ID to prevent replay attacks
+/// * `bridge_request_count` - Total count of bridge requests processed
 #[account]
 #[derive(InitSpace)]
 pub struct ValidatorSet {
@@ -25,60 +27,106 @@ pub struct ValidatorSet {
     #[max_len(MAX_VALIDATORS)]
     pub signers: Vec<Pubkey>,
     /// Consensus threshold - number of validator signatures required
-    /// Automatically calculated as 2/3 of validator count, rounded up
+    /// Automatically calculated using the formula: num_signers - floor((num_signers - 1) / 3)
     pub threshold: u8,
     /// Bump seed for the Program Derived Address (PDA)
     pub bump: u8,
-    /// Last batch id
+    /// Last batch ID processed to prevent replay attacks and ensure sequential processing
     pub last_batch_id: u64,
-    /// Count of bridge requests processed
+    /// Total count of bridge requests processed since initialization
     pub bridge_request_count: u64,
 }
 
+/// Represents the vault account that holds bridged tokens.
+///
+/// The `Vault` account is a Program Derived Address (PDA) that serves as the authority
+/// for token operations. It can be set as the mint authority for tokens, allowing it to
+/// mint tokens on the destination chain, or it can hold tokens in an associated token
+/// account for transfer operations.
+///
+/// # Fields
+///
+/// * `address` - The public key of the vault account (same as the account's key)
+/// * `bump` - Bump seed for the PDA derivation
 #[account]
 #[derive(InitSpace)]
 pub struct Vault {
-    /// Vault address
+    /// The public key of the vault account
     pub address: Pubkey,
-    /// Vault bump
+    /// Bump seed for the Program Derived Address (PDA)
     pub bump: u8,
 }
 
+/// Represents a bridging transaction that transfers tokens to a recipient.
+///
+/// The `BridgingTransaction` account tracks a pending token transfer that requires
+/// validator consensus. Once enough validators have approved the transaction (meeting
+/// the threshold), the tokens are automatically transferred or minted to the recipient,
+/// and the account is closed.
+///
+/// # Fields
+///
+/// * `id` - Unique identifier for the transaction (same as the account's key)
+/// * `amount` - The amount of tokens to transfer to the recipient
+/// * `receiver` - The public key of the recipient on the destination chain
+/// * `mint_token` - The public key of the token mint being bridged
+/// * `signers` - List of validator public keys that have approved this transaction
+/// * `bump` - Bump seed for the PDA derivation
+/// * `batch_id` - The batch ID of this transaction (must be greater than last_batch_id)
 #[account]
 #[derive(InitSpace)]
 pub struct BridgingTransaction {
-    /// The ID of the transaction
+    /// Unique identifier for the transaction
     pub id: Pubkey,
-    /// The amount of tokens that were bridged
+    /// The amount of tokens to transfer to the recipient
     pub amount: u64,
-    /// The receiver's address
+    /// The public key of the recipient on the destination chain
     pub receiver: Pubkey,
     /// The public key of the token mint being bridged
     pub mint_token: Pubkey,
-    /// Signers that have approved the transaction
+    /// List of validator public keys that have approved this transaction
     #[max_len(MAX_VALIDATORS)]
     pub signers: Vec<Pubkey>,
-    /// Bump
+    /// Bump seed for the Program Derived Address (PDA)
     pub bump: u8,
-    /// Batch ID
+    /// The batch ID of this transaction (must be greater than last_batch_id)
     pub batch_id: u64,
 }
 
+/// Represents a pending validator set update that requires consensus.
+///
+/// The `ValidatorDelta` account tracks a proposed change to the validator set that
+/// requires approval from the current validators. Once enough validators have approved
+/// the proposal (meeting the threshold), the changes are applied to the validator set,
+/// and the account is closed.
+///
+/// # Fields
+///
+/// * `id` - Unique identifier for the validator set change (same as the account's key)
+/// * `added` - List of new validator public keys to add to the validator set
+/// * `removed` - List of validator indices to remove from the validator set
+/// * `bump` - Bump seed for the PDA derivation
+/// * `batch_id` - The batch ID of this validator set change (must be greater than last_batch_id)
+/// * `signers` - List of validator public keys that have approved this change
+/// * `proposal_hash` - Hash of the proposal to ensure all validators approve the same change
 #[account]
 #[derive(InitSpace)]
 pub struct ValidatorDelta {
+    /// Unique identifier for the validator set change
     pub id: Pubkey,
+    /// List of new validator public keys to add (max 10 per change)
     #[max_len(MAX_VALIDATORS_CHANGE)]
     pub added: Vec<Pubkey>,
+    /// List of validator indices to remove (max 10 per change)
     #[max_len(MAX_VALIDATORS_CHANGE)]
     pub removed: Vec<u64>,
-    /// Bump
+    /// Bump seed for the Program Derived Address (PDA)
     pub bump: u8,
-    /// Batch ID
+    /// The batch ID of this validator set change (must be greater than last_batch_id)
     pub batch_id: u64,
-    /// Signers that have approved the validator set change
+    /// List of validator public keys that have approved this change
     #[max_len(MAX_VALIDATORS)]
     pub signers: Vec<Pubkey>,
-    /// Proposal hash
+    /// Hash of the proposal to ensure all validators approve the same change
     pub proposal_hash: [u8; 32],
 }

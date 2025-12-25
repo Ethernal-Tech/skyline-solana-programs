@@ -1,8 +1,8 @@
-//! Bridge tokens instruction for minting tokens to recipients.
+//! Bridge transaction instruction for transferring tokens to recipients.
 //!
-//! This module contains the logic for minting tokens to recipients on the destination chain.
-//! This instruction is typically called after tokens have been burned on the source chain
-//! and requires validator consensus to execute.
+//! This module contains the logic for transferring tokens to recipients on the destination chain.
+//! This instruction is typically called after tokens have been transferred to the vault or
+//! burned on the source chain and requires validator consensus to execute.
 
 use anchor_lang::prelude::*;
 use anchor_spl::{
@@ -12,10 +12,10 @@ use anchor_spl::{
 
 use crate::*;
 
-/// Account structure for the bridge_tokens instruction.
+/// Account structure for the bridge_transaction instruction.
 ///
-/// This struct defines the accounts required to mint tokens to a recipient.
-/// It includes the validator set for consensus validation and token accounts for minting.
+/// This struct defines the accounts required to transfer tokens to a recipient.
+/// It includes the validator set for consensus validation and token accounts for minting/transferring.
 #[derive(Accounts)]
 #[instruction(amount: u64, batch_id: u64)]
 pub struct BridgeTransaction<'info> {
@@ -74,6 +74,38 @@ pub struct BridgeTransaction<'info> {
 }
 
 impl<'info> BridgeTransaction<'info> {
+    /// Process the bridge_transaction instruction.
+    ///
+    /// This function creates or approves a bridging transaction for transferring tokens
+    /// to a recipient. The first call creates the transaction with the specified details,
+    /// and subsequent calls from validators approve it. Once the consensus threshold is met,
+    /// the tokens are automatically minted (if vault is mint authority) or transferred
+    /// from the vault to the recipient's associated token account, and the transaction
+    /// account is closed.
+    ///
+    /// # Arguments
+    /// * `ctx` - The instruction context containing all required accounts
+    /// * `amount` - The amount of tokens to transfer to the recipient
+    /// * `batch_id` - The batch ID of the transaction (must be greater than last_batch_id)
+    ///
+    /// # Returns
+    /// * `Result<()>` - Returns Ok(()) on success or an error on failure
+    ///
+    /// # Errors
+    /// * `InvalidBatchId` - If the batch_id is not greater than the last_batch_id
+    /// * `BridgingTransactionMismatch` - If transaction details don't match on subsequent approvals
+    /// * `NoSignersProvided` - If no validator signers are provided
+    /// * `DuplicateSignersProvided` - If duplicate signers are provided
+    /// * `InvalidSigner` - If a signer is not in the validator set
+    /// * `SignerAlreadyApproved` - If a signer has already approved this transaction
+    ///
+    /// # Process Flow
+    /// 1. Creates the transaction account if it doesn't exist, or validates details match
+    /// 2. Validates and collects validator signers from remaining accounts
+    /// 3. Checks for duplicate signers and ensures all are valid validators
+    /// 4. Adds signers to the approval list
+    /// 5. If threshold is met, creates recipient ATA if needed and transfers/mints tokens
+    /// 6. Updates last_batch_id and closes the transaction account
     pub fn process_instruction(ctx: Context<Self>, amount: u64, batch_id: u64) -> Result<()> {
         let bridging_transaction = &mut ctx.accounts.bridging_transaction;
         let payer = &ctx.accounts.payer;
