@@ -105,22 +105,6 @@ impl<'info> BridgeRequest<'info> {
         // Validate that the user has sufficient tokens to bridge
         require!(from.amount >= amount, CustomError::InsufficientFunds);
 
-        if vault_ata.data_is_empty() {
-            let cpi_context = CpiContext::new(
-                associated_token_program.to_account_info(),
-                associated_token::Create {
-                    payer: signer.to_account_info(),
-                    associated_token: vault_ata.to_account_info(),
-                    authority: vault.to_account_info(),
-                    mint: mint.to_account_info(),
-                    system_program: ctx.accounts.system_program.to_account_info(),
-                    token_program: token_program.to_account_info(),
-                },
-            );
-
-            associated_token::create(cpi_context)?;
-        }
-
         if is_vault_mint_authority(mint, &vault.to_account_info()) {
             let cpi_accounts = token::Burn {
                 mint: mint.to_account_info(),
@@ -131,6 +115,24 @@ impl<'info> BridgeRequest<'info> {
             let cpi_context = CpiContext::new(token_program.to_account_info(), cpi_accounts);
             token::burn(cpi_context, amount)?;
         } else {
+            if vault_ata.data_is_empty() {
+                let cpi_context = CpiContext::new(
+                    associated_token_program.to_account_info(),
+                    associated_token::Create {
+                        payer: signer.to_account_info(),
+                        associated_token: vault_ata.to_account_info(),
+                        authority: vault.to_account_info(),
+                        mint: mint.to_account_info(),
+                        system_program: ctx.accounts.system_program.to_account_info(),
+                        token_program: token_program.to_account_info(),
+                    },
+                );
+    
+                associated_token::create(cpi_context)?;
+            }
+    
+            validate_token_account(&vault_ata, &mint, &vault.to_account_info())?;
+
             let cpi_accounts = Transfer {
                 from: from.to_account_info(),
                 to: vault_ata.to_account_info(),

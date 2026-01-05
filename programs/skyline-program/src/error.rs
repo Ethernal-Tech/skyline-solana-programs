@@ -118,4 +118,10 @@ pub enum CustomError {
     /// This error occurs when the bridging transaction details do not match.
     #[msg("Bridging transaction details do not match")]
     BridgingTransactionMismatch,
+
+    /// Invalid vault provided.
+    ///
+    /// This error occurs when the vault is not valid.
+    #[msg("Invalid vault provided")]
+    InvalidVault,
 }

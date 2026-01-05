@@ -4,7 +4,9 @@
 //! for common operations like threshold calculation and authority validation.
 
 use anchor_lang::{prelude::*, solana_program::program_option::COption};
-use anchor_spl::token::Mint;
+use anchor_spl::token::{Mint, TokenAccount};
+
+use crate::CustomError;
 
 /// Calculates the consensus threshold for a given number of validators.
 ///
@@ -50,4 +52,22 @@ pub fn is_vault_mint_authority(mint: &Account<Mint>, vault: &AccountInfo) -> boo
         COption::Some(authority) => authority == vault.key(),
         COption::None => false,
     }
+}
+
+pub fn validate_token_account(
+    account: &UncheckedAccount,
+    mint: &Account<Mint>,
+    vault: &AccountInfo,
+) -> Result<()> {
+    let token_account = TokenAccount::try_deserialize(&mut &account.data.borrow()[..])?;
+    require!(
+        token_account.mint == mint.key(),
+        CustomError::InvalidMintToken
+    );
+    require!(
+        token_account.owner == vault.key(),
+        CustomError::InvalidVault
+    );
+
+    Ok(())
 }

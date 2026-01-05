@@ -142,6 +142,8 @@ impl<'info> BridgeTransaction<'info> {
             .map(|acc| acc.key())
             .collect::<Vec<Pubkey>>();
 
+        require!(signers.len() > 0, CustomError::NoSignersProvided);
+
         let mut signers_copy = signers.clone();
         signers_copy.sort();
         signers_copy.dedup();
@@ -156,7 +158,6 @@ impl<'info> BridgeTransaction<'info> {
             CustomError::InvalidSigner
         );
 
-        require!(signers.len() > 0, CustomError::NoSignersProvided);
         require!(
             !signers
                 .iter()
@@ -206,6 +207,8 @@ impl<'info> BridgeTransaction<'info> {
                 bridging_transaction.amount,
             )?;
         } else {
+            validate_token_account(&vault_ata, &mint, &vault.to_account_info())?;
+
             // Prepare the mint_to instruction with validator set as authority
             let cpi_accounts = Transfer {
                 from: vault_ata.to_account_info(),

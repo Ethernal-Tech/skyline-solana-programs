@@ -31,7 +31,13 @@ pub struct Initialize<'info> {
     pub validator_set: Account<'info, ValidatorSet>,
 
     /// The vault account
-    #[account(init, payer = signer, space = Vault::INIT_SPACE + DISC as usize, seeds = [VAULT_SEED], bump)]
+    #[account(
+        init, 
+        payer = signer, 
+        space = Vault::INIT_SPACE + DISC as usize, 
+        seeds = [VAULT_SEED], 
+        bump
+    )]
     pub vault: Account<'info, Vault>,
 
     /// The system program for account creation
