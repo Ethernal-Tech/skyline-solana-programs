@@ -15,8 +15,8 @@ use anchor_lang::prelude::*;
 pub enum CustomError {
     /// Maximum number of validators exceeded.
     ///
-    /// This error occurs when trying to set more than 10 validators in the validator set.
-    /// The limit is imposed by Solana's transaction signing constraints.
+    /// This error occurs when trying to set more than 128 validators in the validator set.
+    /// The limit is defined by the `MAX_VALIDATORS` constant.
     #[msg("Maximum number of validators exceeded")]
     MaxValidatorsExceeded,
 
@@ -37,8 +37,8 @@ pub enum CustomError {
     /// Not enough signers provided.
     ///
     /// This error occurs when the number of validator signatures provided is less than
-    /// the required consensus threshold. The threshold is automatically calculated as
-    /// 2/3 of the validator count, rounded up.
+    /// the required consensus threshold. The threshold is automatically calculated using
+    /// the formula: num_signers - floor((num_signers - 1) / 3).
     #[msg("Not enough signers provided")]
     NotEnoughSigners,
 
@@ -56,4 +56,72 @@ pub enum CustomError {
     /// to cover the bridging amount.
     #[msg("Insufficient funds in the account")]
     InsufficientFunds,
+
+    /// Invalid batch ID provided.
+    ///
+    /// This error occurs when the batch_id is not greater than the last_batch_id.
+    /// Batch IDs must be strictly increasing to prevent replay attacks and ensure
+    /// sequential processing of operations.
+    #[msg("Invalid batch id; Batch Id must be higher than last batch id")]
+    InvalidBatchId,
+
+    /// Invalid receiver provided.
+    ///
+    /// This error occurs when a receiver is the same as the payer.
+    #[msg("Invalid receiver provided")]
+    InvalidReceiver,
+
+    /// Invalid mint token provided.
+    ///
+    /// This error occurs when a mint token is the same as the payer's mint token.
+    #[msg("Invalid mint token provided")]
+    InvalidMintToken,
+
+    /// No signers provided.
+    ///
+    /// This error occurs when no signers are provided.
+    #[msg("No signers provided")]
+    NoSignersProvided,
+
+    /// Signer already approved.
+    ///
+    /// This error occurs when a signer is already approved.
+    #[msg("Signer already approved")]
+    SignerAlreadyApproved,
+
+    /// Invalid proposal hash.
+    ///
+    /// This error occurs when the proposal hash is not valid.
+    #[msg("Invalid proposal hash")]
+    InvalidProposalHash,
+
+    /// Adding existing signer.
+    ///
+    /// This error occurs when a signer is already in the validator set.
+    #[msg("Adding existing signer")]
+    AddingExistingSigner,
+
+    /// Removing non existent signer.
+    ///
+    /// This error occurs when a signer is not in the validator set.
+    #[msg("Removing non existent signer")]
+    RemovingNonExistentSigner,
+
+    /// Duplicate signers provided.
+    ///
+    /// This error occurs when duplicate signers are provided.
+    #[msg("Duplicate signers provided")]
+    DuplicateSignersProvided,
+
+    /// Bridging transaction mismatch.
+    ///
+    /// This error occurs when the bridging transaction details do not match.
+    #[msg("Bridging transaction details do not match")]
+    BridgingTransactionMismatch,
+
+    /// Invalid vault provided.
+    ///
+    /// This error occurs when the vault is not valid.
+    #[msg("Invalid vault provided")]
+    InvalidVault,
 }

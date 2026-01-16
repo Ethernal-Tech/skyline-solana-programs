@@ -22,13 +22,23 @@ pub struct Initialize<'info> {
     #[account(
         init, 
         payer = signer, 
-        space = ValidatorSet::INIT_SPACE + DISC,
+        space = ValidatorSet::INIT_SPACE + DISC as usize,
         seeds = [VALIDATOR_SET_SEED],
-        constraint = validators.len() <= MAX_VALIDATORS @ CustomError::MaxValidatorsExceeded,
-        constraint = validators.len() >= MIN_VALIDATORS @ CustomError::MinValidatorsNotMet,
+        constraint = validators.len() <= MAX_VALIDATORS as usize @ CustomError::MaxValidatorsExceeded,
+        constraint = validators.len() >= MIN_VALIDATORS as usize @ CustomError::MinValidatorsNotMet,
         bump
     )]
     pub validator_set: Account<'info, ValidatorSet>,
+
+    /// The vault account
+    #[account(
+        init, 
+        payer = signer, 
+        space = Vault::INIT_SPACE + DISC as usize, 
+        seeds = [VAULT_SEED], 
+        bump
+    )]
+    pub vault: Account<'info, Vault>,
 
     /// The system program for account creation
     pub system_program: Program<'info, System>,
@@ -52,10 +62,12 @@ impl<'info> Initialize<'info> {
     ///
     /// # Security Checks
     /// * Validates that all validators are unique (no duplicates)
-    /// * Automatically calculates the consensus threshold as 2/3 of validators (rounded up)
+    /// * Automatically calculates the consensus threshold using the formula: num_signers - floor((num_signers - 1) / 3)
     /// * Stores the bump seed for PDA derivation
-    pub fn process_instruction(ctx: Context<Self>, validators: Vec<Pubkey>) -> Result<()> {
+    /// * Initializes the vault account
+    pub fn process_instruction(ctx: Context<Self>, validators: Vec<Pubkey>, last_id: u64) -> Result<()> {
         let validator_set = &mut ctx.accounts.validator_set;
+        let vault = &mut ctx.accounts.vault;
 
         // Check for duplicate validators by sorting and deduplicating
         let mut validators_copy = validators.clone();
@@ -68,10 +80,19 @@ impl<'info> Initialize<'info> {
         
         // Calculate consensus threshold as 2/3 of validators, rounded up
         // This ensures that at least 2/3 of validators must approve critical operations
-        validator_set.threshold = ((validator_set.signers.len() as f32) * 2.0 / 3.0).ceil() as u8;
+        validator_set.threshold = helpers::calculate_threshold(validator_set.signers.len());
         
         // Store the bump seed for PDA derivation
         validator_set.bump = ctx.bumps.validator_set;
+
+        // Store the last id
+        validator_set.last_batch_id = last_id;
+        validator_set.bridge_request_count = 0;
+
+        // Store the vault address
+        vault.address = vault.key();
+        vault.bump = ctx.bumps.vault;
+
 
         Ok(())
     }
