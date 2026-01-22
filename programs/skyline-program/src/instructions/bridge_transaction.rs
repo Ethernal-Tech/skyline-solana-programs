@@ -52,7 +52,7 @@ pub struct BridgeTransaction<'info> {
     /// The recipient's associated token account for the mint
     /// CHECK: This account is validated through the associated token account creation
     #[account(mut)]
-    pub recipient_ata: UncheckedAccount<'info>,
+    pub recipient_ata: UncheckedAccount<'info>, // q is it referring to recipient?
 
     /// The vault account
     #[account(mut, seeds = [VAULT_SEED], bump = vault.bump)]
@@ -118,7 +118,10 @@ impl<'info> BridgeTransaction<'info> {
         let associated_token_program = &ctx.accounts.associated_token_program;
         let token_program = &ctx.accounts.token_program;
 
-        // // Store the transaction details
+        // Validate amount
+        require!(amount > 0, CustomError::InvalidAmount);
+
+        // Store the transaction details
         if bridging_transaction.id == Pubkey::default() {
             bridging_transaction.id = bridging_transaction.key();
             bridging_transaction.amount = amount;
@@ -187,6 +190,7 @@ impl<'info> BridgeTransaction<'info> {
 
             associated_token::create(cpi_context)?;
         }
+        // q no check that recipient corresponds to the recipient_ata
 
         let seeds = &[VAULT_SEED, &[vault.bump]];
         let signer_seeds = &[&seeds[..]];
@@ -218,6 +222,7 @@ impl<'info> BridgeTransaction<'info> {
 
             // Transfer tokens to the recipient
             token::transfer(
+                // q should we use transfer_checked?
                 CpiContext::new_with_signer(
                     token_program.to_account_info(),
                     cpi_accounts,
