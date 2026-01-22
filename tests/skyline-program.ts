@@ -16,6 +16,8 @@ import {
   LIMITS,
 } from "./fixtures";
 import {
+  createAssociatedTokenAccount,
+  getAccount,
   getAssociatedTokenAddressSync,
   getOrCreateAssociatedTokenAccount,
 } from "@solana/spl-token";
@@ -520,40 +522,6 @@ describe("skyline-program", () => {
         await assertNoBridgingTransaction(fixture.accounts, batchId);
       });
     });
-
-    describe("Recipient ATA Already Exists", () => {
-      it("succeeds and credits recipient", async () => {
-        const batchId = await fixture.batchIds.freshBatchId();
-
-        // Pre-create recipient ATA
-        const ata = await getOrCreateAssociatedTokenAccount(
-          provider.connection,
-          owner.payer,
-          mint,
-          recipient.publicKey,
-        );
-
-        const beforeBalance = await fixture.tokenBalances.snapshot(ata.address);
-
-        // Quorum in one submission
-        await fixture.bridgeTransaction.call({
-          amount: 100,
-          batchId,
-          recipient: recipient.publicKey,
-          mint,
-          validators: validators.slice(0, 5),
-          vaultPDA,
-        });
-
-        const delta = await fixture.tokenBalances.getBalanceDelta(
-          ata.address,
-          beforeBalance,
-        );
-        expect(delta).to.equal(BigInt(100));
-
-        await assertNoBridgingTransaction(fixture.accounts, batchId);
-      });
-    });
     describe("Transfer Branch: validate_token_account Failures", () => {
       it("rejects with InvalidMintToken when vault_ata.mint != mintToken", async () => {
         const batchId = await fixture.batchIds.freshBatchId();
@@ -935,76 +903,166 @@ describe("skyline-program", () => {
       });
     });
 
-    describe.skip("Recipient ATA Validation (KNOWN BUG)", () => {
-      it("should reject when recipientAta does not match (recipient, mint)", async () => {
+    describe("Recipient ATA Validation", () => {
+      it("automatically creates recipient ATA if it doesn't exist", async () => {
         const batchId = await fixture.batchIds.freshBatchId();
+        const newRecipient = web3.Keypair.generate();
 
-        // Recipient A is the intended recipient
-        const recipientA = anchor.web3.Keypair.generate();
-
-        // Recipient B owns the ATA we incorrectly pass
-        const recipientB = anchor.web3.Keypair.generate();
-
-        // Mismatched ATA: for (recipientB, mint), but we pass recipient=recipientA
-        const wrongRecipientAta = getAssociatedTokenAddressSync(
+        // ATA doesn't exist yet
+        const recipientAta = getAssociatedTokenAddressSync(
           mint,
-          recipientB.publicKey,
+          newRecipient.publicKey,
         );
-
-        // Verify wrongRecipientAta doesn't exist yet
-        expect(
-          await provider.connection.getAccountInfo(wrongRecipientAta),
-        ).to.equal(null);
+        const ataAccountBefore = await provider.connection.getAccountInfo(
+          recipientAta,
+        );
+        expect(ataAccountBefore).to.be.null;
 
         const quorumSigners = validators.slice(0, 5);
 
-        // Snapshot balances
-        const recipientAAta = getAssociatedTokenAddressSync(
-          mint,
-          recipientA.publicKey,
+        await fixture.bridgeTransaction.callWithCustomAccounts(
+          100,
+          batchId,
+          {
+            recipient: newRecipient.publicKey,
+            mintToken: mint,
+            recipientAta, // Will be created automatically!
+            vaultAta: getAssociatedTokenAddressSync(mint, vaultPDA, true),
+          },
+          quorumSigners,
         );
-        const aBefore = await fixture.tokenBalances.getBalance(recipientAAta);
-        const bBefore = await fixture.tokenBalances.getBalance(
-          wrongRecipientAta,
+
+        // ATA was created and has tokens
+        const ataAccountAfter = await provider.connection.getAccountInfo(
+          recipientAta,
         );
+        expect(ataAccountAfter).to.not.be.null;
+
+        const recipientAtaData = await getAccount(
+          provider.connection,
+          recipientAta,
+        );
+        expect(Number(recipientAtaData.amount)).to.equal(100);
+      });
+
+      it("rejects non-canonical ATA address", async () => {
+        const batchId = await fixture.batchIds.freshBatchId();
+        const { Keypair } = web3;
+        const nonAtaKeypair = Keypair.generate();
+
+        const quorumSigners = validators.slice(0, 5);
 
         try {
           await fixture.bridgeTransaction.callWithCustomAccounts(
             100,
             batchId,
             {
-              recipient: recipientA.publicKey, // Intended recipient is A
+              recipient: recipient.publicKey,
               mintToken: mint,
-              recipientAta: wrongRecipientAta, // But ATA is for B
+              recipientAta: nonAtaKeypair.publicKey, // Wrong address!
               vaultAta: getAssociatedTokenAddressSync(mint, vaultPDA, true),
             },
             quorumSigners,
           );
-
-          // KNOWN BUG: transaction currently succeeds but shouldn't
-          assert.fail(
-            "KNOWN BUG: tx succeeded but should have been rejected because recipientAta != ATA(recipient, mint)",
-          );
-        } catch (err: any) {
-          // Once fixed, expect specific error:
-          // const code = err?.error?.errorCode?.code ?? err?.errorCode?.code;
-          // expect(code).to.equal("InvalidRecipientAta");
-
-          // For now, just ensure it failed
-          expect(err).to.exist;
-          const code =
-            err?.error?.errorCode?.code ?? err?.errorCode?.code ?? "";
-          expect(code).to.not.equal("");
+          expect.fail("Should have thrown InvalidTokenAccount");
+        } catch (e: any) {
+          expect(e.toString()).to.include("InvalidTokenAccount");
         }
+      });
 
-        // Verify no balance changes
-        const aAfter = await fixture.tokenBalances.getBalance(recipientAAta);
-        const bAfter = await fixture.tokenBalances.getBalance(
-          wrongRecipientAta,
+      it("rejects ATA that is canonical for wrong recipient", async () => {
+        const batchId = await fixture.batchIds.freshBatchId();
+        const wrongRecipient = web3.Keypair.generate();
+
+        // This IS a canonical ATA, but for wrongRecipient, not recipient
+        const wrongRecipientAta = getAssociatedTokenAddressSync(
+          mint,
+          wrongRecipient.publicKey,
         );
 
-        expect(aAfter - aBefore).to.equal(BigInt(0));
-        expect(bAfter - bBefore).to.equal(BigInt(0));
+        const quorumSigners = validators.slice(0, 5);
+
+        try {
+          await fixture.bridgeTransaction.callWithCustomAccounts(
+            100,
+            batchId,
+            {
+              recipient: recipient.publicKey, // ← Using recipient
+              mintToken: mint,
+              recipientAta: wrongRecipientAta, // ← But ATA for wrongRecipient!
+              vaultAta: getAssociatedTokenAddressSync(mint, vaultPDA, true),
+            },
+            quorumSigners,
+          );
+          expect.fail("Should have thrown InvalidTokenAccount");
+        } catch (e: any) {
+          expect(e.toString()).to.include("InvalidTokenAccount");
+        }
+      });
+
+      it("rejects ATA that is canonical for wrong mint", async () => {
+        const batchId = await fixture.batchIds.freshBatchId();
+
+        // Use fixture to create a different mint
+        const payerKeypair = (provider.wallet as anchor.Wallet).payer;
+        const wrongMint = await fixture.mints.create(
+          payerKeypair.publicKey, // authority
+          9, // decimals
+        );
+
+        // This IS a canonical ATA for (recipient, wrongMint)
+        const wrongMintAta = getAssociatedTokenAddressSync(
+          wrongMint,
+          recipient.publicKey,
+        );
+
+        const quorumSigners = validators.slice(0, 5);
+
+        try {
+          await fixture.bridgeTransaction.callWithCustomAccounts(
+            100,
+            batchId,
+            {
+              recipient: recipient.publicKey,
+              mintToken: mint, // ← Using mint
+              recipientAta: wrongMintAta, // ← But ATA for wrongMint!
+              vaultAta: getAssociatedTokenAddressSync(mint, vaultPDA, true),
+            },
+            quorumSigners,
+          );
+          expect.fail("Should have thrown InvalidTokenAccount");
+        } catch (e: any) {
+          expect(e.toString()).to.include("InvalidTokenAccount");
+        }
+      });
+      it("succeeds and credits existing ATA recipient", async () => {
+        const batchId = await fixture.batchIds.freshBatchId();
+
+        // Pre-create recipient ATA
+        const ata = await getOrCreateAssociatedTokenAccount(
+          provider.connection,
+          owner.payer,
+          mint,
+          recipient.publicKey,
+        );
+
+        const beforeBalance = await fixture.tokenBalances.snapshot(ata.address);
+
+        // Quorum in one submission
+        await fixture.bridgeTransaction.call({
+          amount: 100,
+          batchId,
+          recipient: recipient.publicKey,
+          mint,
+          validators: validators.slice(0, 5),
+          vaultPDA,
+        });
+
+        const delta = await fixture.tokenBalances.getBalanceDelta(
+          ata.address,
+          beforeBalance,
+        );
+        expect(delta).to.equal(BigInt(100));
 
         await assertNoBridgingTransaction(fixture.accounts, batchId);
       });
