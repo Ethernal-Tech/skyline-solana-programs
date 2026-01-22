@@ -124,4 +124,9 @@ pub enum CustomError {
     /// This error occurs when the vault is not valid.
     #[msg("Invalid vault provided")]
     InvalidVault,
+
+    /// Invalid amount provided.
+    ///
+    /// This error occurs when the amount is zero.
+    #[msg("Amount must be greater than zero")]    InvalidAmount,
 }
