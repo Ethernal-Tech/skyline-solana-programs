@@ -4,9 +4,8 @@
 //! This instruction is typically called after tokens have been transferred to the vault or
 //! burned on the source chain and requires validator consensus to execute.
 
-use anchor_lang::prelude::*;
 use anchor_spl::{
-    associated_token::{self, AssociatedToken},
+    associated_token::{self, get_associated_token_address, AssociatedToken},
     token::{self, Mint, Token, Transfer},
 };
 
@@ -50,9 +49,17 @@ pub struct BridgeTransaction<'info> {
     pub recipient: UncheckedAccount<'info>,
 
     /// The recipient's associated token account for the mint
-    /// CHECK: This account is validated through the associated token account creation
-    #[account(mut)]
-    pub recipient_ata: UncheckedAccount<'info>, // q is it referring to recipient?
+    /// Validated to be the canonical ATA address, created manually after threshold check
+    /// CHECK: Address is validated via constraint to be the canonical ATA for (recipient, mint_token)
+    #[account(
+    mut,
+    // The address must be the canonical ATA for (recipient, mint_token)
+    constraint = recipient_ata.key() == get_associated_token_address(
+        &recipient.key(), 
+        &mint_token.key()
+    ) @ CustomError::InvalidTokenAccount
+)]
+    pub recipient_ata: UncheckedAccount<'info>,
 
     /// The vault account
     #[account(mut, seeds = [VAULT_SEED], bump = vault.bump)]
@@ -174,12 +181,12 @@ impl<'info> BridgeTransaction<'info> {
             return Ok(());
         }
 
-        // Create the recipient's associated token account if it doesn't exist
+        // Create recipient ATA if it doesn't exist (only after threshold met)
         if recipient_ata.data_is_empty() {
             let cpi_context = CpiContext::new(
                 associated_token_program.to_account_info(),
                 associated_token::Create {
-                    payer: ctx.accounts.payer.to_account_info(),
+                    payer: payer.to_account_info(),
                     associated_token: recipient_ata.to_account_info(),
                     authority: recipient.to_account_info(),
                     mint: mint.to_account_info(),
@@ -187,10 +194,8 @@ impl<'info> BridgeTransaction<'info> {
                     token_program: token_program.to_account_info(),
                 },
             );
-
             associated_token::create(cpi_context)?;
         }
-        // q no check that recipient corresponds to the recipient_ata
 
         let seeds = &[VAULT_SEED, &[vault.bump]];
         let signer_seeds = &[&seeds[..]];
