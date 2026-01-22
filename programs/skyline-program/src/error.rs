@@ -128,5 +128,11 @@ pub enum CustomError {
     /// Invalid amount provided.
     ///
     /// This error occurs when the amount is zero.
-    #[msg("Amount must be greater than zero")]    InvalidAmount,
+    #[msg("Amount must be greater than zero")]
+    InvalidAmount,
+    /// Invalid token account.
+    ///
+    /// This error occurs when the token account is not valid.
+    #[msg("Invalid token account")]
+    InvalidTokenAccount,
 }
