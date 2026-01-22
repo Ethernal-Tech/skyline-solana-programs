@@ -10,8 +10,11 @@ use crate::CustomError;
 
 /// Calculates the consensus threshold for a given number of validators.
 ///
-/// The threshold is calculated using the formula: `num_signers - floor((num_signers - 1) / 3)`.
-/// This ensures that at least a supermajority of validators must approve critical operations.
+/// Formula: `num_signers - floor((num_signers - 1) / 3)`
+///
+/// This ensures Byzantine Fault Tolerance: the system can tolerate up to
+/// `floor((num_signers - 1) / 3)` Byzantine (malicious or offline) validators
+/// while still reaching consensus.
 ///
 /// # Arguments
 ///
@@ -19,17 +22,19 @@ use crate::CustomError;
 ///
 /// # Returns
 ///
-/// The number of validator signatures required for consensus (as u8)
+/// The minimum number of validator signatures required for consensus
 ///
 /// # Examples
 ///
 /// ```
-/// // For 4 validators: 4 - floor(3/3) = 4 - 1 = 3
-/// // For 6 validators: 6 - floor(5/3) = 6 - 1 = 5
-/// // For 9 validators: 9 - floor(8/3) = 9 - 2 = 7
+/// // 4 validators: 4 - 1 = 3 (75%) - tolerates 0 Byzantine
+/// // 5 validators: 5 - 1 = 4 (80%) - tolerates 1 Byzantine  
+/// // 7 validators: 7 - 2 = 5 (71%) - tolerates 2 Byzantine
+/// // 10 validators: 10 - 3 = 7 (70%) - tolerates 3 Byzantine
 /// ```
 pub fn calculate_threshold(num_signers: usize) -> u8 {
-    num_signers as u8 - (((num_signers as f32) - 1.0) / 3.0).floor() as u8
+    // Integer division automatically floors in Rust
+    num_signers as u8 - ((num_signers - 1) / 3) as u8
 }
 
 /// Checks if the vault is the mint authority for a given token mint.
@@ -68,6 +73,7 @@ pub fn validate_token_account(
         token_account.owner == vault.key(),
         CustomError::InvalidVault
     );
+    // q vault_ata.key() missing check?
 
     Ok(())
 }
