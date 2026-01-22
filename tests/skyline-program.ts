@@ -1010,7 +1010,7 @@ describe("skyline-program", () => {
       });
     });
 
-    describe.skip("Amount Zero (TDD - Not Yet Implemented)", () => {
+    describe("Amount Zero", () => {
       it("should reject amount = 0 with custom error", async function () {
         const batchId = await fixture.batchIds.freshBatchId();
 
@@ -1034,9 +1034,8 @@ describe("skyline-program", () => {
           errorCode = e?.error?.errorCode?.code ?? e?.errorCode?.code ?? "";
         }
 
-        // This test will fail until program implements the check
         expect(thrown, "should reject amount = 0").to.equal(true);
-        expect(errorCode).to.equal("InvalidAmount"); // or "AmountMustBeGreaterThanZero"
+        expect(errorCode).to.equal("InvalidAmount");
 
         // No transaction should be created
         await assertNoBridgingTransaction(fixture.accounts, batchId);
@@ -1782,27 +1781,25 @@ describe("skyline-program", () => {
     // ============================================================================
 
     describe("Edge Cases", () => {
-      describe.skip("Amount Zero (TDD - Not Yet Implemented)", () => {
-        it("should reject amount = 0", async function () {
-          let thrown = false;
-          let errorCode = "";
+      it("should reject amount = 0", async function () {
+        let thrown = false;
+        let errorCode = "";
 
-          try {
-            await fixture.bridgeRequest.call({
-              amount: 0,
-              receiver: validReceiver,
-              destinationChain,
-              mint: transferMint,
-              signer: user,
-            });
-          } catch (e: any) {
-            thrown = true;
-            errorCode = e?.error?.errorCode?.code ?? e?.errorCode?.code ?? "";
-          }
+        try {
+          await fixture.bridgeRequest.call({
+            amount: 0,
+            receiver: validReceiver,
+            destinationChain,
+            mint: transferMint,
+            signer: user,
+          });
+        } catch (e: any) {
+          thrown = true;
+          errorCode = e?.error?.errorCode?.code ?? e?.errorCode?.code ?? "";
+        }
 
-          expect(thrown, "should reject amount = 0").to.equal(true);
-          expect(errorCode).to.equal("InvalidAmount");
-        });
+        expect(thrown, "should reject amount = 0").to.equal(true);
+        expect(errorCode).to.equal("InvalidAmount");
       });
 
       it("handles large amount (close to u64::MAX)", async () => {
@@ -2210,7 +2207,10 @@ describe("skyline-program", () => {
           const batchId = await fixture.batchIds.freshBatchId();
 
           // Try to remove 11 validators - will fail at serialization
-          const tooManyRemovals = Array.from({ length: LIMITS.MAX_VALIDATORS_CHANGE + 1 }, (_, i) => i);
+          const tooManyRemovals = Array.from(
+            { length: LIMITS.MAX_VALIDATORS_CHANGE + 1 },
+            (_, i) => i,
+          );
 
           try {
             await fixture.bridgeVSU.call({

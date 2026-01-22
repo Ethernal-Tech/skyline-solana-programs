@@ -44,8 +44,16 @@ pub struct BridgeRequest<'info> {
 
     /// The vault associated token account for the tokens being bridged
     /// CHECK: This account is validated through the associated token account creation
+    // q can caller pass a different token account than the vault's ata?
+    // q why UncheckedAccount? why not something like:  
+    // #[account(
+    //    init_if_needed,
+    //    payer = signer,
+    //    token::mint = mint,
+    //   token::authority = vault,
+    // )]
     #[account(mut)]
-    pub vault_ata: UncheckedAccount<'info>,
+    pub vault_ata: UncheckedAccount<'info>, 
 
     /// The token mint for the tokens being bridged
     #[account(mut)]
@@ -93,23 +101,24 @@ impl<'info> BridgeRequest<'info> {
         receiver: Vec<u8>,
         destination_chain: u8,
     ) -> Result<()> {
-        let mint = &ctx.accounts.mint;
+        let mint = &ctx.accounts.mint; // account owned by token_program
         let from = &ctx.accounts.signers_ata;
         let signer = &ctx.accounts.signer;
         let token_program = &ctx.accounts.token_program;
         let vault = &ctx.accounts.vault;
         let vault_ata = &ctx.accounts.vault_ata;
-        let associated_token_program = &ctx.accounts.associated_token_program;
+        let associated_token_program = &ctx.accounts.associated_token_program; // (owner, mint) -> ata
         let validator_set = &mut ctx.accounts.validator_set;
 
+        // Validate amount
+        require!(amount > 0, CustomError::InvalidAmount);
         // Validate that the user has sufficient tokens to bridge
         require!(from.amount >= amount, CustomError::InsufficientFunds);
-
         if is_vault_mint_authority(mint, &vault.to_account_info()) {
             let cpi_accounts = token::Burn {
                 mint: mint.to_account_info(),
                 from: from.to_account_info(),
-                authority: signer.to_account_info(),
+                authority: signer.to_account_info(), // user must sign to burn their tokens
             };
 
             let cpi_context = CpiContext::new(token_program.to_account_info(), cpi_accounts);
