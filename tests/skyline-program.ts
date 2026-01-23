@@ -2489,27 +2489,22 @@ describe("skyline-program", () => {
           expectBNArrayEqual(vscAccount.removed, [highestIndex]);
         });
 
-        it("KNOWN BUG: allows duplicate validators in added array", async () => {
+        it("rejects duplicate validators in added array", async () => {
           const batchId = await fixture.batchIds.freshBatchId();
           const duplicateVal = newValidators[0].publicKey;
 
-          await fixture.bridgeVSU.call({
-            added: [duplicateVal, duplicateVal],
-            removed: toBNArray([]),
-            batchId,
-            signers: [validators[0]],
-          });
-
-          const vscAccount = await fixture.bridgeVSU.fetchValidatorSetChange(
-            batchId,
-          );
-          expect(vscAccount.added.length).to.equal(2);
-          expect(vscAccount.added[0].toBase58()).to.equal(
-            duplicateVal.toBase58(),
-          );
-          expect(vscAccount.added[1].toBase58()).to.equal(
-            duplicateVal.toBase58(),
-          );
+          try {
+            await fixture.bridgeVSU.call({
+              added: [duplicateVal, duplicateVal],
+              removed: toBNArray([]),
+              batchId,
+              signers: [validators[0]],
+            });
+            expect.fail("Should have thrown DuplicateValidatorsInAdded");
+          } catch (err: any) {
+            const errorCode = err.error?.errorCode?.code || err.code;
+            expect(errorCode).to.equal("DuplicateValidatorsInAdded");
+          }
         });
       });
     });

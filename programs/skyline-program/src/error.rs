@@ -135,4 +135,10 @@ pub enum CustomError {
     /// This error occurs when the token account is not valid.
     #[msg("Invalid token account")]
     InvalidTokenAccount,
+
+    /// Duplicate validators found in added list.
+    ///  
+    /// This error occurs when there are duplicate validators in the added list during a validator set update.
+    #[msg("Duplicate validators found in added list")]
+    DuplicateValidatorsInAdded,
 }
