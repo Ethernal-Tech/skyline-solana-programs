@@ -141,4 +141,9 @@ pub enum CustomError {
     /// This error occurs when there are duplicate validators in the added list during a validator set update.
     #[msg("Duplicate validators found in added list")]
     DuplicateValidatorsInAdded,
+    /// Cannot remove more validators than will exist after additions.  
+    ///
+    /// This error occurs when the number of validators being removed exceeds the number of validators that will remain after additions during a validator set update.
+    #[msg("Cannot remove more validators than will exist after additions")]
+    TooManyValidatorsRemoved,
 }
