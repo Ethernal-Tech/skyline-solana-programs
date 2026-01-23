@@ -2394,7 +2394,7 @@ describe("skyline-program", () => {
             expect(errorCode).to.equal("DuplicateSignersProvided");
           }
         });
-        it.skip("should handle underflow when removed.len > (signers_len + added.len)", async () => {
+        it("rejects when removed.len > (signers.len + added.len) - prevents underflow", async () => {
           const batchId = await fixture.batchIds.freshBatchId();
           const vs = await fixture.getValidatorSet();
           const currentCount = vs.signers.length;
@@ -2402,6 +2402,8 @@ describe("skyline-program", () => {
           // Try to remove more than exist (even after adding some)
           const added = [newValidators[0].publicKey]; // +1
           const removeCount = currentCount + 2; // Try to remove currentCount + 2
+
+          // This would cause underflow: 1 + currentCount - (currentCount + 2) = -1
           const removed = toBNArray(
             Array.from({ length: removeCount }, (_, i) => i),
           );
@@ -2409,14 +2411,14 @@ describe("skyline-program", () => {
           try {
             await fixture.bridgeVSU.call({
               added,
-              removed, // This would cause underflow: 1 + currentCount - (currentCount + 2)
+              removed,
               batchId,
               signers: [validators[0]],
             });
-            expect.fail("Should have thrown error");
+            expect.fail("Should have thrown TooManyValidatorsRemoved");
           } catch (err: any) {
-            // Could be RemovingNonExistentSigner or underflow panic
-            expect(err).to.exist;
+            const errorCode = err.error?.errorCode?.code || err.code;
+            expect(errorCode).to.equal("TooManyValidatorsRemoved");
           }
         });
       });

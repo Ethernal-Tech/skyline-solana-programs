@@ -92,8 +92,14 @@ impl<'info> BridgeVSU<'info> {
                 !added.iter().any(|pk| validator_set.signers.contains(pk)),
                 CustomError::AddingExistingSigner
             );
+            // Validate we won't underflow when calculating new validator count
+            require!(
+                removed.len() <= signers_len + added.len(),
+                CustomError::TooManyValidatorsRemoved
+            );
 
-            let new_signers_len = added.len() + signers_len - removed.len(); // q underflow?
+            let new_signers_len = added.len() + signers_len - removed.len();
+
             require!(
                 new_signers_len <= MAX_VALIDATORS as usize,
                 CustomError::MaxValidatorsExceeded
