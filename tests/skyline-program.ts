@@ -522,8 +522,8 @@ describe("skyline-program", () => {
         await assertNoBridgingTransaction(fixture.accounts, batchId);
       });
     });
-    describe("Transfer Branch: validate_token_account Failures", () => {
-      it("rejects with InvalidMintToken when vault_ata.mint != mintToken", async () => {
+    describe("Transfer Branch Vault Failures", () => {
+      it("rejects when vault_ata is canonical ATA for wrong mint", async () => {
         const batchId = await fixture.batchIds.freshBatchId();
 
         // Create ATA for different mint
@@ -538,28 +538,26 @@ describe("skyline-program", () => {
 
         const quorumSigners = validators.slice(0, 5);
 
-        let thrown = false;
         try {
           await fixture.bridgeTransaction.callWithCustomAccounts(
             100,
             batchId,
             {
               recipient: recipient.publicKey,
-              mintToken: mint, // claim we're bridging mint
+              mintToken: mint, // Claiming to bridge mint
               recipientAta: getAssociatedTokenAddressSync(
                 mint,
                 recipient.publicKey,
               ),
-              vaultAta: otherMintVaultAta.address, // but vault ATA is for otherMint
+              vaultAta: otherMintVaultAta.address, // But vault ATA is for otherMint
             },
             quorumSigners,
           );
+          expect.fail("Should have thrown InvalidVault");
         } catch (e: any) {
-          thrown = true;
-          expect(e?.error?.errorCode?.code).to.equal("InvalidMintToken");
+          // The constraint catches it with InvalidVault
+          expect(e?.error?.errorCode?.code).to.equal("InvalidVault");
         }
-
-        expect(thrown, "should have thrown InvalidMintToken").to.equal(true);
         await assertNoBridgingTransaction(fixture.accounts, batchId);
       });
 
@@ -602,15 +600,12 @@ describe("skyline-program", () => {
         await assertNoBridgingTransaction(fixture.accounts, batchId);
       });
 
-      it.skip("rejects when vault_ata address is not the canonical ATA", async () => {
+      it("rejects when vault_ata address is not the canonical ATA", async () => {
         const batchId = await fixture.batchIds.freshBatchId();
+        const fakeVaultAta = web3.Keypair.generate(); // Not a canonical ATA
 
-        // Create a different token account for vault with same mint
-        // but NOT the associated token account
-        const nonAtaKeypair = web3.Keypair.generate();
-        // Initialize token account manually...
+        const quorumSigners = validators.slice(0, 5);
 
-        let thrown = false;
         try {
           await fixture.bridgeTransaction.callWithCustomAccounts(
             100,
@@ -622,16 +617,14 @@ describe("skyline-program", () => {
                 mint,
                 recipient.publicKey,
               ),
-              vaultAta: nonAtaKeypair.publicKey, // Not an ATA!
+              vaultAta: fakeVaultAta.publicKey, // Not canonical!
             },
-            validators.slice(0, 5),
+            quorumSigners,
           );
+          expect.fail("Should have thrown InvalidVault");
         } catch (e: any) {
-          thrown = true;
-          expect(e?.error?.errorCode?.code).to.equal("InvalidVault"); // or new error
+          expect(e.toString()).to.include("InvalidVault");
         }
-
-        expect(thrown).to.equal(true);
       });
     });
 
@@ -1758,7 +1751,8 @@ describe("skyline-program", () => {
         );
       });
 
-      it("rejects with wrong vault_ata (different mint)", async () => {
+      it("rejects when vault_ata is canonical ATA for wrong mint", async () => {
+        // Create ATA for wrong mint
         const wrongMint = await fixture.mints.create(owner.publicKey, 9);
         const wrongVaultAta = await getOrCreateAssociatedTokenAccount(
           provider.connection,
@@ -1767,9 +1761,6 @@ describe("skyline-program", () => {
           vaultPDA,
           true,
         );
-
-        let thrown = false;
-        let errorCode = "";
 
         try {
           await fixture.bridgeRequest.callWithCustomAccounts(
@@ -1782,18 +1773,19 @@ describe("skyline-program", () => {
                 transferMint,
                 user.publicKey,
               ),
-              vaultAta: wrongVaultAta.address, // Wrong vault ATA
-              mint: transferMint,
+              vaultAta: wrongVaultAta.address, // ATA for (vault, wrongMint)
+              mint: transferMint, // But claiming transferMint
             },
             [user],
           );
+          expect.fail("Should have thrown InvalidVault");
         } catch (e: any) {
-          thrown = true;
-          errorCode = e?.error?.errorCode?.code ?? "";
+          // With UncheckedAccount + address constraint:
+          // Expected: get_associated_token_address(vault, transferMint)
+          // Actual:   wrongVaultAta (address for (vault, wrongMint))
+          // These addresses don't match → InvalidVault
+          expect(e?.error?.errorCode?.code).to.equal("InvalidVault");
         }
-
-        expect(thrown, "should fail with wrong vault ATA").to.equal(true);
-        expect(errorCode).to.equal("InvalidMintToken");
       });
 
       it("rejects with wrong vault_ata owner", async () => {
@@ -1804,9 +1796,6 @@ describe("skyline-program", () => {
           transferMint,
           notVault.publicKey,
         );
-
-        let thrown = false;
-        let errorCode = "";
 
         try {
           await fixture.bridgeRequest.callWithCustomAccounts(
@@ -1824,13 +1813,37 @@ describe("skyline-program", () => {
             },
             [user],
           );
+          expect.fail("Should have thrown InvalidVault");
         } catch (e: any) {
-          thrown = true;
-          errorCode = e?.error?.errorCode?.code ?? "";
+          // With manual constraint, we check the derived address
+          // wrongOwnerAta != get_associated_token_address(vault, mint)
+          expect(e?.error?.errorCode?.code).to.equal("InvalidVault");
         }
+      });
 
-        expect(thrown, "should fail with wrong owner").to.equal(true);
-        expect(errorCode).to.equal("InvalidVault");
+      it("rejects when vault_ata is not a valid ATA address", async () => {
+        const randomAccount = web3.Keypair.generate();
+
+        try {
+          await fixture.bridgeRequest.callWithCustomAccounts(
+            100,
+            validReceiver,
+            destinationChain,
+            {
+              signer: user.publicKey,
+              signersAta: getAssociatedTokenAddressSync(
+                transferMint,
+                user.publicKey,
+              ),
+              vaultAta: randomAccount.publicKey,
+              mint: transferMint,
+            },
+            [user],
+          );
+          expect.fail("Should have thrown InvalidVault");
+        } catch (e: any) {
+          expect(e?.error?.errorCode?.code).to.equal("InvalidVault");
+        }
       });
     });
 

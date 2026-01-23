@@ -66,8 +66,15 @@ pub struct BridgeTransaction<'info> {
     pub vault: Account<'info, Vault>,
 
     /// The vault associated token account for the mint
-    /// CHECK: This account is validated through the associated token account creation
-    #[account(mut)]
+    /// Validated to be the canonical ATA address
+    /// CHECK: Address is validated via constraint to be the canonical ATA for (vault, mint_token)
+    #[account(
+    mut,
+    constraint = vault_ata.key() == get_associated_token_address(
+        &vault.key(), 
+        &mint_token.key()
+    ) @ CustomError::InvalidVault
+)]
     pub vault_ata: UncheckedAccount<'info>,
 
     /// The token program for minting operations
@@ -216,8 +223,6 @@ impl<'info> BridgeTransaction<'info> {
                 bridging_transaction.amount,
             )?;
         } else {
-            validate_token_account(&vault_ata, &mint, &vault.to_account_info())?;
-
             // Prepare the mint_to instruction with validator set as authority
             let cpi_accounts = Transfer {
                 from: vault_ata.to_account_info(),
