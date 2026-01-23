@@ -68,11 +68,23 @@ impl<'info> BridgeVSU<'info> {
         batch_id: u64,
     ) -> Result<()> {
         let validator_set = &mut ctx.accounts.validator_set;
-        let validator_set_change = &mut ctx.accounts.validator_set_change;
+        let validator_set_change: &mut Account<'info, ValidatorDelta> =
+            &mut ctx.accounts.validator_set_change;
         let payer = &ctx.accounts.payer;
 
         let proposal_hash =
             hash(&[Self::concat_pubkeys(&added), Self::concat_u64(&removed)].concat());
+
+        // Validate no duplicates in added list
+        if !added.is_empty() {
+            let mut added_sorted = added.clone();
+            added_sorted.sort();
+            added_sorted.dedup();
+            require!(
+                added.len() == added_sorted.len(),
+                CustomError::DuplicateValidatorsInAdded
+            );
+        }
 
         if validator_set_change.id == Pubkey::default() {
             let signers_len = validator_set.signers.len();
@@ -81,7 +93,7 @@ impl<'info> BridgeVSU<'info> {
                 CustomError::AddingExistingSigner
             );
 
-            let new_signers_len = added.len() + signers_len - removed.len();
+            let new_signers_len = added.len() + signers_len - removed.len(); // q underflow?
             require!(
                 new_signers_len <= MAX_VALIDATORS as usize,
                 CustomError::MaxValidatorsExceeded
