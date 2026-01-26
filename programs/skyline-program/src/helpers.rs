@@ -26,7 +26,7 @@ use anchor_spl::token::Mint;
 ///
 /// ```
 /// // 4 validators: 4 - 1 = 3 (75%) - tolerates 0 Byzantine
-/// // 5 validators: 5 - 1 = 4 (80%) - tolerates 1 Byzantine  
+/// // 5 validators: 5 - 1 = 4 (80%) - tolerates 1 Byzantine
 /// // 7 validators: 7 - 2 = 5 (71%) - tolerates 2 Byzantine
 /// // 10 validators: 10 - 3 = 7 (70%) - tolerates 3 Byzantine
 /// ```

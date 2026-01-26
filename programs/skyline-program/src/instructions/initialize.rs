@@ -19,8 +19,8 @@ pub struct Initialize<'info> {
 
     /// The validator set account to be initialized
     #[account(
-        init, 
-        payer = signer, 
+        init,
+        payer = signer,
         space = ValidatorSet::INIT_SPACE + DISC as usize,
         seeds = [VALIDATOR_SET_SEED],
         constraint = validators.len() <= MAX_VALIDATORS as usize @ CustomError::MaxValidatorsExceeded,
@@ -31,10 +31,10 @@ pub struct Initialize<'info> {
 
     /// The vault account
     #[account(
-        init, 
-        payer = signer, 
-        space = Vault::INIT_SPACE + DISC as usize, 
-        seeds = [VAULT_SEED], 
+        init,
+        payer = signer,
+        space = Vault::INIT_SPACE + DISC as usize,
+        seeds = [VAULT_SEED],
         bump
     )]
     pub vault: Account<'info, Vault>,

@@ -55,7 +55,7 @@ pub struct BridgeTransaction<'info> {
     mut,
     // The address must be the canonical ATA for (recipient, mint_token)
     constraint = recipient_ata.key() == get_associated_token_address(
-        &recipient.key(), 
+        &recipient.key(),
         &mint_token.key()
     ) @ CustomError::InvalidTokenAccount
 )]
@@ -71,7 +71,7 @@ pub struct BridgeTransaction<'info> {
     #[account(
     mut,
     constraint = vault_ata.key() == get_associated_token_address(
-        &vault.key(), 
+        &vault.key(),
         &mint_token.key()
     ) @ CustomError::InvalidVault
 )]
