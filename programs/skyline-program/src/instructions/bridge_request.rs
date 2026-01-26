@@ -8,7 +8,7 @@
 use crate::*;
 use anchor_spl::{
     associated_token::{create, get_associated_token_address, AssociatedToken, Create},
-    token::{self, TokenAccount, Burn, Mint, Transfer},
+    token::{self, Burn, Mint, TokenAccount, Transfer},
 };
 
 /// Account structure for the bridge_request instruction.
@@ -24,8 +24,8 @@ pub struct BridgeRequest<'info> {
 
     /// The validator set account
     #[account(
-        mut, 
-        seeds = [VALIDATOR_SET_SEED], 
+        mut,
+        seeds = [VALIDATOR_SET_SEED],
         bump = validator_set.bump
     )]
     pub validator_set: Account<'info, ValidatorSet>,
@@ -117,7 +117,7 @@ impl<'info> BridgeRequest<'info> {
 
         // Validate amount
         require!(amount > 0, CustomError::InvalidAmount);
-        
+
         // Validate that the user has sufficient tokens to bridge
         require!(from.amount >= amount, CustomError::InsufficientFunds);
 
