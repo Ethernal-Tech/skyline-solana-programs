@@ -9,14 +9,13 @@ import {
   generateValidators,
   calculateExpectedThreshold,
   assertValidatorSetState,
-  assertVaultState,
   assertNoBridgingTransaction,
   assertBridgingTransactionSigners,
   assertBridgingTransactionState,
   LIMITS,
+  assertValidBump,
 } from "./fixtures";
 import {
-  createAssociatedTokenAccount,
   getAccount,
   getAssociatedTokenAddressSync,
   getOrCreateAssociatedTokenAccount,
@@ -156,7 +155,7 @@ describe("skyline-program", () => {
             // Also verify vault
             const vaultPDA = fixture.pdas.vault();
             const vault = await fixture.accounts.getVault(vaultPDA);
-            assertVaultState(vault, { address: vaultPDA });
+            assertValidBump(vault.bump);
 
             console.log(
               "  ℹ ValidatorSet already initialized and matches expected state",
@@ -194,7 +193,7 @@ describe("skyline-program", () => {
         // Verify vault
         const vaultPDA = fixture.pdas.vault();
         const vault = await fixture.accounts.getVault(vaultPDA);
-        assertVaultState(vault, { address: vaultPDA });
+        assertValidBump(vault.bump);
       });
 
       it("fails on re-initialization attempt", async function () {

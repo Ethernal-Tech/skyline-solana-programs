@@ -89,11 +89,7 @@ impl<'info> Initialize<'info> {
         validator_set.last_batch_id = last_id;
         validator_set.bridge_request_count = 0;
 
-        // Store the vault address
-        vault.address = vault.key();
         vault.bump = ctx.bumps.vault;
-
-
         Ok(())
     }
 }
