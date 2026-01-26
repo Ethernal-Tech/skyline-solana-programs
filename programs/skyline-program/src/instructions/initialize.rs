@@ -4,7 +4,6 @@
 //! set of validators. The validators must meet certain requirements and will control
 //! all subsequent bridge operations.
 
-use anchor_lang::prelude::*;
 use crate::*;
 
 /// Account structure for the initialize instruction.
@@ -65,7 +64,11 @@ impl<'info> Initialize<'info> {
     /// * Automatically calculates the consensus threshold using the formula: num_signers - floor((num_signers - 1) / 3)
     /// * Stores the bump seed for PDA derivation
     /// * Initializes the vault account
-    pub fn process_instruction(ctx: Context<Self>, validators: Vec<Pubkey>, last_id: u64) -> Result<()> {
+    pub fn process_instruction(
+        ctx: Context<Self>,
+        validators: Vec<Pubkey>,
+        last_id: u64,
+    ) -> Result<()> {
         let validator_set = &mut ctx.accounts.validator_set;
         let vault = &mut ctx.accounts.vault;
 
@@ -73,26 +76,27 @@ impl<'info> Initialize<'info> {
         let mut validators_copy = validators.clone();
         validators_copy.sort();
         validators_copy.dedup();
-        require!(validators_copy.len() == validators.len(), CustomError::ValidatorsNotUnique);
+        require!(
+            validators_copy.len() == validators.len(),
+            CustomError::ValidatorsNotUnique
+        );
 
         // Set the validator list
         validator_set.signers = validators;
-        
+
         // Calculate consensus threshold as 2/3 of validators, rounded up
         // This ensures that at least 2/3 of validators must approve critical operations
         validator_set.threshold = helpers::calculate_threshold(validator_set.signers.len());
-        
+
         // Store the bump seed for PDA derivation
         validator_set.bump = ctx.bumps.validator_set;
 
         // Store the last id
-        validator_set.last_batch_id = last_id;
+        validator_set.last_batch_id = last_id; // q should last_id be zero on init?
         validator_set.bridge_request_count = 0;
 
-        // Store the vault address
-        vault.address = vault.key();
+        // Initialize the vault account bump
         vault.bump = ctx.bumps.vault;
-
 
         Ok(())
     }

@@ -46,13 +46,10 @@ pub struct ValidatorSet {
 ///
 /// # Fields
 ///
-/// * `address` - The public key of the vault account (same as the account's key)
 /// * `bump` - Bump seed for the PDA derivation
 #[account]
 #[derive(InitSpace)]
 pub struct Vault {
-    /// The public key of the vault account
-    pub address: Pubkey,
     /// Bump seed for the Program Derived Address (PDA)
     pub bump: u8,
 }
