@@ -44,7 +44,7 @@ pub const BRIDGING_REQUEST_SEED: &[u8] = b"bridging_request";
 pub const MIN_VALIDATORS: u32 = 4;
 
 /// Seed string used to derive BridgingTransaction Program Derived Addresses (PDAs).
-///    
+///
 /// This seed is combined with the transaction id to create a unique address for the bridging transaction account.
 #[constant]
 pub const BRIDGING_TRANSACTION_SEED: &[u8] = b"bridging_transaction";
