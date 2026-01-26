@@ -153,7 +153,7 @@ impl<'info> BridgeVSU<'info> {
                 .all(|s| !validator_set_change.signers.contains(s)),
             CustomError::SignerAlreadyApproved
         );
-        require!(signers.len() > 0, CustomError::NoSignersProvided);
+        require!(!signers.is_empty(), CustomError::NoSignersProvided);
 
         validator_set_change.signers.extend(signers.iter());
 
