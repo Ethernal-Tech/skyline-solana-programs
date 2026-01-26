@@ -48,7 +48,6 @@ export interface ValidatorSetData {
 }
 
 export interface VaultData {
-  address: web3.PublicKey;
   bump: number;
 }
 
@@ -290,20 +289,6 @@ export function assertValidatorSetState(
 export function assertValidBump(bump: number) {
   expect(bump, "bump should be >= 0").to.be.at.least(0);
   expect(bump, "bump should be <= 255").to.be.at.most(255);
-}
-
-/**
- * Assert vault state is correct
- */
-export function assertVaultState(
-  actual: VaultData,
-  expected: { address: web3.PublicKey },
-) {
-  expect(
-    actual.address.equals(expected.address),
-    "vault address mismatch",
-  ).to.equal(true);
-  assertValidBump(actual.bump);
 }
 
 /**
