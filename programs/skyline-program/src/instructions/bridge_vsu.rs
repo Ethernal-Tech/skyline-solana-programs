@@ -13,7 +13,7 @@ use crate::*;
 /// This struct defines the accounts required to update the validator set.
 /// It includes validation constraints to ensure the new validator set meets security requirements.
 #[derive(Accounts)]
-#[instruction(added: Vec<Pubkey>, removed: Vec<u64>, batch_id: u64)]
+#[instruction(batch_id: u64)]
 pub struct BridgeVSU<'info> {
     /// The payer for any associated token account creation
     #[account(mut)]

@@ -16,7 +16,7 @@ use crate::*;
 /// This struct defines the accounts required to transfer tokens to a recipient.
 /// It includes the validator set for consensus validation and token accounts for minting/transferring.
 #[derive(Accounts)]
-#[instruction(amount: u64, batch_id: u64)]
+#[instruction(batch_id: u64)]
 pub struct BridgeTransaction<'info> {
     /// The payer for any associated token account creation
     #[account(mut)]
