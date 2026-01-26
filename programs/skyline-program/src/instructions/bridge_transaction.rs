@@ -159,7 +159,7 @@ impl<'info> BridgeTransaction<'info> {
             .map(|acc| acc.key())
             .collect::<Vec<Pubkey>>();
 
-        require!(signers.len() > 0, CustomError::NoSignersProvided);
+        require!(!signers.is_empty(), CustomError::NoSignersProvided);
 
         let mut signers_copy = signers.clone();
         signers_copy.sort();
