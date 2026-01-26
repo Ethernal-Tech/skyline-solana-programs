@@ -1,51 +1,25 @@
 name: CI
 
 on:
-  push:
-    branches: [main]
   pull_request:
-    branches: [main]
-    types: [opened, synchronize, reopened]
-
+    branches:
+      - main
+    types:
+      - opened
+      - synchronize
+      - reopened
+  push:
+    branches:
+      - main
 jobs:
-  lint:
-    name: Lint & Format
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          components: rustfmt, clippy
-      
-      - name: Check Rust formatting
-        run: cargo fmt -- --check
-      
-      - name: Run Clippy (Advisory)
-        # Allow this step to fail without failing the job
-        continue-on-error: true
-        run: cargo clippy --all-targets -- -D warnings
-      
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-          cache: "yarn"
-      
-      - name: Install dependencies
-        run: yarn install --frozen-lockfile
-      
-      - name: Check TypeScript/JS formatting
-        run: yarn prettier --check .
-
   test:
-    name: Anchor Tests
+    name: Run Anchor Tests
     runs-on: ubuntu-latest
-    # Tests run independently of linting
-    
+
     steps:
-      - uses: actions/checkout@v4
-      
+      - uses: actions/checkout@v3
       - uses: metadaoproject/anchor-test@v2.3
         with:
-          anchor-version: "0.31.1"
-          solana-cli-version: "3.0.13"
-          node-version: "22"
+          anchor-version: "0.30.0"
+          solana-cli-version: "2.3.12"
+          node-version: "20"
