@@ -1,6 +1,9 @@
 name: CI
 
 on:
+  push:
+    branches:
+      - develop
   pull_request:
     branches:
       - main
@@ -16,8 +19,16 @@ jobs:
 
     steps:
       - uses: actions/checkout@v3
-      - uses: metadaoproject/anchor-test@v2.3
+
+      - name: Setup Rust Toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
-          anchor-version: "0.31.1"  # ← Changed from 0.30.0
-          solana-cli-version: "2.3.12"  # ok (compatible with 0.31.1)
-          node-version: "20"  # ok (20 LTS is stable)
+          toolchain: "1.89.0"
+          components: rustfmt, clippy
+
+      - name: Run Anchor Tests
+        uses: metadaoproject/anchor-test@v2.3
+        with:
+          anchor-version: "0.32.1"
+          solana-cli-version: "2.1.7"
+          node-version: "20"
