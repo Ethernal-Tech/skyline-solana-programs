@@ -21,5 +21,6 @@ custom-panic = []
 solana = []
 
 [dependencies]
-anchor-lang = { version = "0.31.1", features = ["init-if-needed"] }
-anchor-spl = { version = "0.31.1"}
+anchor-lang = { version = "0.32.1", features = ["init-if-needed"] }
+anchor-spl = { version = "0.32.1"}
+blake3 = "=1.5.5"

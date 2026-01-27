@@ -4,7 +4,7 @@
 //! bridge operations. This instruction requires consensus from the current validator
 //! set and maintains the same validation rules as initialization.
 
-use anchor_lang::solana_program::hash::hash;
+use blake3;
 
 use crate::*;
 
@@ -73,7 +73,7 @@ impl<'info> BridgeVSU<'info> {
         let payer = &ctx.accounts.payer;
 
         let proposal_hash =
-            hash(&[Self::concat_pubkeys(&added), Self::concat_u64(&removed)].concat());
+            blake3::hash(&[Self::concat_pubkeys(&added), Self::concat_u64(&removed)].concat());
 
         // Validate no duplicates in added list
         if !added.is_empty() {
@@ -114,16 +114,14 @@ impl<'info> BridgeVSU<'info> {
             );
 
             validator_set_change.id = validator_set_change.key();
-            validator_set_change.proposal_hash = proposal_hash.to_bytes();
+            validator_set_change.proposal_hash = *proposal_hash.as_bytes();
             validator_set_change.added = added;
             validator_set_change.removed = removed;
             validator_set_change.batch_id = batch_id;
             validator_set_change.bump = ctx.bumps.validator_set_change;
         } else {
             require!(
-                validator_set_change
-                    .proposal_hash
-                    .eq(proposal_hash.to_bytes().as_ref()),
+                validator_set_change.proposal_hash == *proposal_hash.as_bytes(),
                 CustomError::InvalidProposalHash
             );
         }
