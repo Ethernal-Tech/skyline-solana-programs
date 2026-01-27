@@ -89,7 +89,10 @@ export function calculateExpectedThreshold(validatorCount: number): number {
 // ============================================================================
 
 export class PDAs {
-  constructor(private programId: web3.PublicKey) {}
+  private programId: web3.PublicKey;
+  constructor(programId: web3.PublicKey) {
+    this.programId = programId;
+  }
 
   validatorSet(): web3.PublicKey {
     return web3.PublicKey.findProgramAddressSync(
@@ -129,7 +132,10 @@ export class PDAs {
 // ============================================================================
 
 export class AccountFetchers {
-  constructor(private program: Program<SkylineProgram>) {}
+  private program: Program<SkylineProgram>;
+  constructor(program: Program<SkylineProgram>) {
+    this.program = program;
+  }
 
   async getValidatorSet(pda: web3.PublicKey): Promise<ValidatorSetData> {
     return await this.program.account.validatorSet.fetch(pda);
@@ -167,11 +173,13 @@ export class AccountFetchers {
 
 export class BatchIdManager {
   private batchCursor: number = 0;
+  private accounts: AccountFetchers;
+  private vsPDA: web3.PublicKey;
 
-  constructor(
-    private accounts: AccountFetchers,
-    private vsPDA: web3.PublicKey,
-  ) {}
+  constructor(accounts: AccountFetchers, vsPDA: web3.PublicKey) {
+    this.accounts = accounts;
+    this.vsPDA = vsPDA;
+  }
 
   /**
    * Get the next valid batch ID from on-chain state
@@ -205,7 +213,11 @@ export class BatchIdManager {
 // ============================================================================
 
 export class TokenBalanceHelper {
-  constructor(private connection: web3.Connection) {}
+  private connection: web3.Connection;
+
+  constructor(connection: web3.Connection) {
+    this.connection = connection;
+  }
 
   /**
    * Get token balance or 0 if account doesn't exist
@@ -388,10 +400,13 @@ export function assertBridgingTransactionState(
 // ============================================================================
 
 export class InitializeHelper {
-  constructor(
-    private program: Program<SkylineProgram>,
-    private owner: anchor.Wallet,
-  ) {}
+  private program: Program<SkylineProgram>;
+  private owner: anchor.Wallet;
+
+  constructor(program: Program<SkylineProgram>, owner: anchor.Wallet) {
+    this.program = program;
+    this.owner = owner;
+  }
 
   /**
    * Call initialize instruction
@@ -481,10 +496,13 @@ export interface BridgeTransactionParams {
 }
 
 export class BridgeTransactionHelper {
-  constructor(
-    private program: Program<SkylineProgram>,
-    private owner: anchor.Wallet,
-  ) {}
+  private program: Program<SkylineProgram>;
+  private owner: anchor.Wallet;
+
+  constructor(program: Program<SkylineProgram>, owner: anchor.Wallet) {
+    this.program = program;
+    this.owner = owner;
+  }
 
   /**
    * Call bridgeTransaction instruction
@@ -613,10 +631,13 @@ export class BridgeTransactionHelper {
 // ============================================================================
 
 export class MintHelper {
-  constructor(
-    private connection: web3.Connection,
-    private payer: web3.Keypair,
-  ) {}
+  private connection: web3.Connection;
+  private payer: web3.Keypair;
+
+  constructor(connection: web3.Connection, payer: web3.Keypair) {
+    this.connection = connection;
+    this.payer = payer;
+  }
 
   /**
    * Create a new mint
@@ -744,11 +765,19 @@ export interface BridgeRequestParams {
 }
 
 export class BridgeRequestHelper {
+  private program: Program<SkylineProgram>;
+  private owner: anchor.Wallet;
+  private vaultPDA: web3.PublicKey;
+
   constructor(
-    private program: Program<SkylineProgram>,
-    private owner: anchor.Wallet,
-    private vaultPDA: web3.PublicKey,
-  ) {}
+    program: Program<SkylineProgram>,
+    owner: anchor.Wallet,
+    vaultPDA: web3.PublicKey,
+  ) {
+    this.program = program;
+    this.owner = owner;
+    this.vaultPDA = vaultPDA;
+  }
 
   /**
    * Call bridgeRequest instruction
@@ -858,10 +887,13 @@ export class EventParser {
     162, 122, 193, 76, 126, 59, 162, 143,
   ]);
 
-  constructor(
-    private program: Program<SkylineProgram>,
-    private connection: web3.Connection,
-  ) {}
+  private program: Program<SkylineProgram>;
+  private connection: web3.Connection;
+
+  constructor(program: Program<SkylineProgram>, connection: web3.Connection) {
+    this.program = program;
+    this.connection = connection;
+  }
 
   /**
    * Parse BridgeRequestEvent from transaction signature
@@ -1049,12 +1081,22 @@ export class EventParser {
  * Fixture for validator set update operations
  */
 export class BridgeVSUFixture {
+  private program: Program<SkylineProgram>;
+  private connection: web3.Connection;
+  private validatorSetPDA: web3.PublicKey;
+  private defaultPayer: web3.Keypair;
+
   constructor(
-    private program: Program<SkylineProgram>,
-    private connection: web3.Connection,
-    private validatorSetPDA: web3.PublicKey,
-    private defaultPayer: web3.Keypair
-  ) {}
+    program: Program<SkylineProgram>,
+    connection: web3.Connection,
+    validatorSetPDA: web3.PublicKey,
+    defaultPayer: web3.Keypair,
+  ) {
+    this.program = program;
+    this.connection = connection;
+    this.validatorSetPDA = validatorSetPDA;
+    this.defaultPayer = defaultPayer;
+  }
 
   /**
    * Get the ValidatorSetChange PDA for a given batch_id
@@ -1142,7 +1184,7 @@ export class SkylineTestFixture {
   public events: EventParser;
   public bridgeVSU: BridgeVSUFixture;
 
-  constructor(public ctx: TestContext) {
+  constructor(ctx: TestContext) {
     this.pdas = new PDAs(ctx.program.programId);
     this.accounts = new AccountFetchers(ctx.program);
     this.initialize = new InitializeHelper(ctx.program, ctx.owner);
@@ -1164,7 +1206,7 @@ export class SkylineTestFixture {
       ctx.program,
       ctx.connection,
       this.pdas.validatorSet(),
-      ctx.owner.payer
+      ctx.owner.payer,
     );
   }
 
