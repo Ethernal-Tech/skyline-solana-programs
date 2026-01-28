@@ -97,14 +97,14 @@ export class PDAs {
   validatorSet(): web3.PublicKey {
     return web3.PublicKey.findProgramAddressSync(
       [Buffer.from(SEEDS.VALIDATOR_SET)],
-      this.programId,
+      this.programId
     )[0];
   }
 
   vault(): web3.PublicKey {
     return web3.PublicKey.findProgramAddressSync(
       [Buffer.from(SEEDS.VAULT)],
-      this.programId,
+      this.programId
     )[0];
   }
 
@@ -113,7 +113,7 @@ export class PDAs {
     const batchLe = batchBN.toArrayLike(Buffer, "le", 8);
     return web3.PublicKey.findProgramAddressSync(
       [Buffer.from(SEEDS.BRIDGING_TRANSACTION), batchLe],
-      this.programId,
+      this.programId
     )[0];
   }
 
@@ -122,7 +122,7 @@ export class PDAs {
     const batchLe = batchBN.toArrayLike(Buffer, "le", 8);
     return web3.PublicKey.findProgramAddressSync(
       [Buffer.from(SEEDS.VALIDATOR_SET_CHANGE), batchLe],
-      this.programId,
+      this.programId
     )[0];
   }
 }
@@ -142,7 +142,7 @@ export class AccountFetchers {
   }
 
   async getValidatorSetNullable(
-    pda: web3.PublicKey,
+    pda: web3.PublicKey
   ): Promise<ValidatorSetData | null> {
     return await this.program.account.validatorSet.fetchNullable(pda);
   }
@@ -155,13 +155,13 @@ export class AccountFetchers {
     return await this.program.account.vault.fetchNullable(pda);
   }
   async getBridgingTransaction(
-    pda: web3.PublicKey,
+    pda: web3.PublicKey
   ): Promise<BridgingTransactionData> {
     return await this.program.account.bridgingTransaction.fetch(pda);
   }
 
   async getBridgingTransactionNullable(
-    pda: web3.PublicKey,
+    pda: web3.PublicKey
   ): Promise<BridgingTransactionData | null> {
     return await this.program.account.bridgingTransaction.fetchNullable(pda);
   }
@@ -225,7 +225,7 @@ export class TokenBalanceHelper {
   async getBalance(tokenAccount: web3.PublicKey): Promise<bigint> {
     try {
       const response = await this.connection.getTokenAccountBalance(
-        tokenAccount,
+        tokenAccount
       );
       return BigInt(response.value.amount);
     } catch {
@@ -238,7 +238,7 @@ export class TokenBalanceHelper {
    */
   async getBalanceDelta(
     tokenAccount: web3.PublicKey,
-    beforeBalance: bigint,
+    beforeBalance: bigint
   ): Promise<bigint> {
     const afterBalance = await this.getBalance(tokenAccount);
     return afterBalance - beforeBalance;
@@ -266,14 +266,14 @@ export function assertValidatorSetState(
     threshold: number;
     lastBatchId: number | BN;
     bridgeRequestCount: number | BN;
-  },
+  }
 ) {
   // Sort both arrays for comparison
   const actualSigners = actual.signers.map((pk) => pk.toBase58()).sort();
   const expectedSigners = expected.validators.map((pk) => pk.toBase58()).sort();
 
   expect(actualSigners, "validator signers mismatch").to.deep.equal(
-    expectedSigners,
+    expectedSigners
   );
   expect(actual.threshold, "threshold mismatch").to.equal(expected.threshold);
 
@@ -282,7 +282,7 @@ export function assertValidatorSetState(
       ? new BN(expected.lastBatchId)
       : expected.lastBatchId;
   expect(actual.lastBatchId.toString(), "lastBatchId mismatch").to.equal(
-    expectedBatchId.toString(),
+    expectedBatchId.toString()
   );
 
   const expectedRequestCount =
@@ -291,7 +291,7 @@ export function assertValidatorSetState(
       : expected.bridgeRequestCount;
   expect(
     actual.bridgeRequestCount.toString(),
-    "bridgeRequestCount mismatch",
+    "bridgeRequestCount mismatch"
   ).to.equal(expectedRequestCount.toString());
 }
 
@@ -308,15 +308,15 @@ export function assertValidBump(bump: number) {
  */
 export async function assertNoBridgingTransaction(
   accounts: AccountFetchers,
-  batchId: number | BN,
+  batchId: number | BN
 ): Promise<void> {
   const pda = new PDAs(accounts["program"].programId).bridgingTransaction(
-    batchId,
+    batchId
   );
   const bt = await accounts.getBridgingTransactionNullable(pda);
   expect(
     bt,
-    `expected no bridging transaction for batchId=${batchId}`,
+    `expected no bridging transaction for batchId=${batchId}`
   ).to.equal(null);
 }
 
@@ -327,27 +327,27 @@ export async function assertBridgingTransactionSigners(
   accounts: AccountFetchers,
   programId: web3.PublicKey,
   batchId: number | BN,
-  expectedSigners: web3.PublicKey[],
+  expectedSigners: web3.PublicKey[]
 ): Promise<void> {
   const pda = new PDAs(programId).bridgingTransaction(batchId);
   const bt = await accounts.getBridgingTransactionNullable(pda);
 
   expect(
     bt,
-    `expected pending bridging transaction for batchId=${batchId}`,
+    `expected pending bridging transaction for batchId=${batchId}`
   ).to.not.equal(null);
 
   const actualSigners = bt!.signers.map((pk) => pk.toBase58());
   const actualSet = new Set(actualSigners);
 
   expect(actualSet.size, "signers should be unique").to.equal(
-    expectedSigners.length,
+    expectedSigners.length
   );
 
   for (const pk of expectedSigners) {
     expect(
       actualSet.has(pk.toBase58()),
-      `expected signer ${pk.toBase58()} to be in approval list`,
+      `expected signer ${pk.toBase58()} to be in approval list`
     ).to.equal(true);
   }
 }
@@ -363,7 +363,7 @@ export function assertBridgingTransactionState(
     mintToken: web3.PublicKey;
     batchId: number | BN;
     expectedPDA: web3.PublicKey;
-  },
+  }
 ) {
   const expectedAmount =
     typeof expected.amount === "number"
@@ -375,22 +375,22 @@ export function assertBridgingTransactionState(
       : expected.batchId;
 
   expect(actual.amount.toString(), "amount mismatch").to.equal(
-    expectedAmount.toString(),
+    expectedAmount.toString()
   );
   expect(
     actual.receiver.equals(expected.receiver),
-    "receiver mismatch",
+    "receiver mismatch"
   ).to.equal(true);
   expect(
     actual.mintToken.equals(expected.mintToken),
-    "mintToken mismatch",
+    "mintToken mismatch"
   ).to.equal(true);
   expect(actual.batchId.toString(), "batchId mismatch").to.equal(
-    expectedBatchId.toString(),
+    expectedBatchId.toString()
   );
   expect(
     actual.id.equals(expected.expectedPDA),
-    "id should match PDA",
+    "id should match PDA"
   ).to.equal(true);
   assertValidBump(actual.bump);
 }
@@ -413,7 +413,7 @@ export class InitializeHelper {
    */
   async call(
     validators: web3.PublicKey[],
-    lastId: number | BN = 0,
+    lastId: number | BN = 0
   ): Promise<string> {
     const lastIdBN = typeof lastId === "number" ? new BN(lastId) : lastId;
 
@@ -431,7 +431,7 @@ export class InitializeHelper {
   async expectError(
     validators: web3.PublicKey[],
     expectedErrorCode: string,
-    lastId: number | BN = 0,
+    lastId: number | BN = 0
   ): Promise<void> {
     const lastIdBN = typeof lastId === "number" ? new BN(lastId) : lastId;
 
@@ -450,7 +450,7 @@ export class InitializeHelper {
 
     if (!thrown) {
       throw new Error(
-        `Expected initialize to fail with ${expectedErrorCode}, but it succeeded`,
+        `Expected initialize to fail with ${expectedErrorCode}, but it succeeded`
       );
     }
   }
@@ -460,7 +460,7 @@ export class InitializeHelper {
    */
   async expectFailure(
     validators: web3.PublicKey[],
-    lastId: number | BN = 0,
+    lastId: number | BN = 0
   ): Promise<void> {
     const lastIdBN = typeof lastId === "number" ? new BN(lastId) : lastId;
 
@@ -529,12 +529,12 @@ export class BridgeTransactionHelper {
         mintToken: params.mint,
         recipientAta: getAssociatedTokenAddressSync(
           params.mint,
-          params.recipient,
+          params.recipient
         ),
         vaultAta: getAssociatedTokenAddressSync(
           params.mint,
           params.vaultPDA,
-          true,
+          true
         ),
       })
       .signers(params.validators)
@@ -554,7 +554,7 @@ export class BridgeTransactionHelper {
       recipientAta: web3.PublicKey;
       vaultAta: web3.PublicKey;
     },
-    validators: web3.Keypair[],
+    validators: web3.Keypair[]
   ): Promise<string> {
     const amountBN = typeof amount === "number" ? new BN(amount) : amount;
     const batchIdBN = typeof batchId === "number" ? new BN(batchId) : batchId;
@@ -581,7 +581,7 @@ export class BridgeTransactionHelper {
    */
   async expectError(
     params: BridgeTransactionParams,
-    expectedErrorCode: string,
+    expectedErrorCode: string
   ): Promise<void> {
     let thrown = false;
     try {
@@ -594,7 +594,7 @@ export class BridgeTransactionHelper {
 
     if (!thrown) {
       throw new Error(
-        `Expected bridgeTransaction to fail with ${expectedErrorCode}, but it succeeded`,
+        `Expected bridgeTransaction to fail with ${expectedErrorCode}, but it succeeded`
       );
     }
   }
@@ -607,7 +607,7 @@ export class BridgeTransactionHelper {
     batchId: number | BN,
     recipient: web3.PublicKey,
     mint: web3.PublicKey,
-    vaultPDA: web3.PublicKey,
+    vaultPDA: web3.PublicKey
   ): Promise<string> {
     const amountBN = typeof amount === "number" ? new BN(amount) : amount;
     const batchIdBN = typeof batchId === "number" ? new BN(batchId) : batchId;
@@ -644,14 +644,14 @@ export class MintHelper {
    */
   async create(
     authority: web3.PublicKey,
-    decimals: number = 9,
+    decimals: number = 9
   ): Promise<web3.PublicKey> {
     return await createMint(
       this.connection,
       this.payer,
       authority,
       null,
-      decimals,
+      decimals
     );
   }
 
@@ -662,14 +662,14 @@ export class MintHelper {
     mint: web3.PublicKey,
     destination: web3.PublicKey,
     amount: number,
-    allowPDA: boolean = false,
+    allowPDA: boolean = false
   ): Promise<void> {
     const ata = await getOrCreateAssociatedTokenAccount(
       this.connection,
       this.payer,
       mint,
       destination,
-      allowPDA,
+      allowPDA
     );
 
     await mintTo(
@@ -678,7 +678,7 @@ export class MintHelper {
       mint,
       ata.address,
       this.payer,
-      amount,
+      amount
     );
   }
   /**
@@ -687,7 +687,7 @@ export class MintHelper {
   async freezeTokenAccount(
     mint: web3.PublicKey,
     tokenAccount: web3.PublicKey,
-    freezeAuthority: web3.Keypair,
+    freezeAuthority: web3.Keypair
   ): Promise<void> {
     const { freezeAccount } = await import("@solana/spl-token");
 
@@ -696,7 +696,7 @@ export class MintHelper {
       this.payer,
       tokenAccount,
       mint,
-      freezeAuthority,
+      freezeAuthority
     );
   }
 
@@ -706,14 +706,14 @@ export class MintHelper {
   async createWithFreezeAuthority(
     mintAuthority: web3.PublicKey,
     freezeAuthority: web3.PublicKey,
-    decimals: number = 9,
+    decimals: number = 9
   ): Promise<web3.PublicKey> {
     return await createMint(
       this.connection,
       this.payer,
       mintAuthority,
       freezeAuthority, // Set freeze authority
-      decimals,
+      decimals
     );
   }
 
@@ -737,7 +737,7 @@ export class MintHelper {
    */
   async setMintAuthority(
     mint: web3.PublicKey,
-    newAuthority: web3.PublicKey,
+    newAuthority: web3.PublicKey
   ): Promise<void> {
     const { setAuthority, AuthorityType } = await import("@solana/spl-token");
 
@@ -747,7 +747,7 @@ export class MintHelper {
       mint,
       this.payer.publicKey, // Current authority
       AuthorityType.MintTokens,
-      newAuthority, // New authority (can be PDA)
+      newAuthority // New authority (can be PDA)
     );
   }
 }
@@ -772,7 +772,7 @@ export class BridgeRequestHelper {
   constructor(
     program: Program<SkylineProgram>,
     owner: anchor.Wallet,
-    vaultPDA: web3.PublicKey,
+    vaultPDA: web3.PublicKey
   ) {
     this.program = program;
     this.owner = owner;
@@ -789,19 +789,19 @@ export class BridgeRequestHelper {
 
     const signerAta = getAssociatedTokenAddressSync(
       params.mint,
-      signer.publicKey,
+      signer.publicKey
     );
     const vaultAta = getAssociatedTokenAddressSync(
       params.mint,
       this.vaultPDA,
-      true,
+      true
     );
 
     return await this.program.methods
       .bridgeRequest(
         amountBN,
         Buffer.from(params.receiver),
-        params.destinationChain,
+        params.destinationChain
       )
       .accounts({
         signer: signer.publicKey,
@@ -826,7 +826,7 @@ export class BridgeRequestHelper {
       vaultAta: web3.PublicKey;
       mint: web3.PublicKey;
     },
-    signers: web3.Keypair[],
+    signers: web3.Keypair[]
   ): Promise<string> {
     const amountBN = typeof amount === "number" ? new BN(amount) : amount;
 
@@ -842,7 +842,7 @@ export class BridgeRequestHelper {
    */
   async expectError(
     params: BridgeRequestParams,
-    expectedErrorCode: string,
+    expectedErrorCode: string
   ): Promise<void> {
     let thrown = false;
     try {
@@ -855,7 +855,7 @@ export class BridgeRequestHelper {
 
     if (!thrown) {
       throw new Error(
-        `Expected bridgeRequest to fail with ${expectedErrorCode}, but it succeeded`,
+        `Expected bridgeRequest to fail with ${expectedErrorCode}, but it succeeded`
       );
     }
   }
@@ -899,7 +899,7 @@ export class EventParser {
    * Parse BridgeRequestEvent from transaction signature
    */
   async parseBridgeRequestEvent(
-    signature: string,
+    signature: string
   ): Promise<BridgeRequestEventData | null> {
     // Wait for confirmation
     await new Promise((resolve) => setTimeout(resolve, 500));
@@ -997,7 +997,7 @@ export class EventParser {
    * Parse ValidatorSetUpdatedEvent from transaction signature
    */
   async parseValidatorSetUpdatedEvent(
-    signature: string,
+    signature: string
   ): Promise<ValidatorSetUpdatedEventData | null> {
     await new Promise((resolve) => setTimeout(resolve, 500));
 
@@ -1029,7 +1029,7 @@ export class EventParser {
         !discriminator.equals(EventParser.VALIDATOR_SET_UPDATED_DISCRIMINATOR)
       ) {
         console.error(
-          "Event discriminator does not match ValidatorSetUpdatedEvent",
+          "Event discriminator does not match ValidatorSetUpdatedEvent"
         );
         return null;
       }
@@ -1045,7 +1045,7 @@ export class EventParser {
    * Manually decode ValidatorSetUpdatedEvent
    */
   private decodeValidatorSetUpdatedEvent(
-    data: Buffer,
+    data: Buffer
   ): ValidatorSetUpdatedEventData {
     let offset = 0;
 
@@ -1090,7 +1090,7 @@ export class BridgeVSUFixture {
     program: Program<SkylineProgram>,
     connection: web3.Connection,
     validatorSetPDA: web3.PublicKey,
-    defaultPayer: web3.Keypair,
+    defaultPayer: web3.Keypair
   ) {
     this.program = program;
     this.connection = connection;
@@ -1107,7 +1107,7 @@ export class BridgeVSUFixture {
         Buffer.from("validator_set_change"),
         new BN(batchId).toArrayLike(Buffer, "le", 8),
       ],
-      this.program.programId,
+      this.program.programId
     );
   }
 
@@ -1190,12 +1190,12 @@ export class SkylineTestFixture {
     this.initialize = new InitializeHelper(ctx.program, ctx.owner);
     this.bridgeTransaction = new BridgeTransactionHelper(
       ctx.program,
-      ctx.owner,
+      ctx.owner
     );
     this.bridgeRequest = new BridgeRequestHelper(
       ctx.program,
       ctx.owner,
-      this.pdas.vault(),
+      this.pdas.vault()
     );
     this.mints = new MintHelper(ctx.connection, ctx.owner.payer);
     this.batchIds = new BatchIdManager(this.accounts, this.pdas.validatorSet());
@@ -1206,7 +1206,7 @@ export class SkylineTestFixture {
       ctx.program,
       ctx.connection,
       this.pdas.validatorSet(),
-      ctx.owner.payer,
+      ctx.owner.payer
     );
   }
 
