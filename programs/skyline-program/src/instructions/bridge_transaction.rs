@@ -6,7 +6,7 @@
 
 use anchor_spl::{
     associated_token::{self, get_associated_token_address, AssociatedToken},
-    token::{self, Mint, Token, Transfer},
+    token::{self, transfer_checked, Mint, Token, TransferChecked},
 };
 
 use crate::*;
@@ -224,21 +224,22 @@ impl<'info> BridgeTransaction<'info> {
             )?;
         } else {
             // Prepare the mint_to instruction with validator set as authority
-            let cpi_accounts = Transfer {
+            let cpi_accounts = TransferChecked {
                 from: vault_ata.to_account_info(),
                 to: recipient_ata.to_account_info(),
                 authority: vault.to_account_info(),
+                mint: mint.to_account_info(),
             };
 
             // Transfer tokens to the recipient
-            token::transfer(
-                // q should we use transfer_checked?
+            transfer_checked(
                 CpiContext::new_with_signer(
                     token_program.to_account_info(),
                     cpi_accounts,
                     signer_seeds,
                 ),
                 bridging_transaction.amount,
+                mint.decimals,
             )?;
         }
 
