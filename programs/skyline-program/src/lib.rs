@@ -136,7 +136,7 @@ pub mod skyline_program {
     pub fn bridge_vsu(
         ctx: Context<BridgeVSU>,
         added: Vec<Pubkey>,
-        removed: Vec<u64>,
+        removed: Vec<Pubkey>,
         batch_id: u64,
     ) -> Result<()> {
         BridgeVSU::process_instruction(ctx, added, removed, batch_id)

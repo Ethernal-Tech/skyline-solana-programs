@@ -1116,7 +1116,7 @@ export class BridgeVSUFixture {
    */
   async call(params: {
     added: web3.PublicKey[];
-    removed: BN[]; // indices of validators to remove;
+    removed: web3.PublicKey[];
     batchId: number;
     payer?: web3.Keypair;
     signers: web3.Keypair[];

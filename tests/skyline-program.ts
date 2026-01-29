@@ -22,31 +22,6 @@ import {
 } from "@solana/spl-token";
 
 /**
- * Helper to compare BN arrays by their numeric values
- */
-function expectBNArrayEqual(
-  actual: anchor.BN[],
-  expected: number[],
-  message?: string
-) {
-  expect(actual.length, `${message || ""} - length mismatch`).to.equal(
-    expected.length
-  );
-  actual.forEach((bn, i) => {
-    expect(bn.toNumber(), `${message || ""} - value at index ${i}`).to.equal(
-      expected[i]
-    );
-  });
-}
-
-/**
- * Helper to convert number[] to BN[]
- */
-function toBNArray(nums: number[]): anchor.BN[] {
-  return nums.map((n) => new anchor.BN(n));
-}
-
-/**
  * Airdrop SOL to an account
  */
 async function airdrop(
@@ -2112,12 +2087,23 @@ describe("skyline-program", () => {
       newValidators = Array.from({ length: 3 }, () => web3.Keypair.generate());
     });
 
+    // Helper to compare Pubkey arrays
+    const expectPubkeyArrayEqual = (
+      actual: web3.PublicKey[],
+      expected: web3.PublicKey[]
+    ) => {
+      expect(actual.length).to.equal(expected.length);
+      for (let i = 0; i < actual.length; i++) {
+        expect(actual[i].toBase58()).to.equal(expected[i].toBase58());
+      }
+    };
+
     describe("First Submission (Create Proposal)", () => {
       describe("Happy Path", () => {
         it("successfully creates VSU proposal with valid parameters", async () => {
           const batchId = await fixture.batchIds.freshBatchId();
           const added = [newValidators[0].publicKey];
-          const removed = toBNArray([]);
+          const removed: web3.PublicKey[] = [];
 
           const vsBefore = await fixture.getValidatorSet();
           const validatorCountBefore = vsBefore.signers.length;
@@ -2136,7 +2122,7 @@ describe("skyline-program", () => {
           expect(vscAccount).to.not.be.null;
           expect(vscAccount.added.length).to.equal(1);
           expect(vscAccount.added[0].toBase58()).to.equal(added[0].toBase58());
-          expectBNArrayEqual(vscAccount.removed, []);
+          expect(vscAccount.removed.length).to.equal(0);
           expect(vscAccount.batchId.toNumber()).to.equal(batchId);
           expect(vscAccount.signers.length).to.equal(1);
           expect(vscAccount.signers[0].toBase58()).to.equal(
@@ -2154,7 +2140,7 @@ describe("skyline-program", () => {
             newValidators[1].publicKey,
             newValidators[2].publicKey,
           ];
-          const removed = toBNArray([]);
+          const removed: web3.PublicKey[] = [];
 
           await fixture.bridgeVSU.call({
             added,
@@ -2167,13 +2153,16 @@ describe("skyline-program", () => {
             batchId
           );
           expect(vscAccount.added.length).to.equal(2);
-          expectBNArrayEqual(vscAccount.removed, []);
+          expect(vscAccount.removed.length).to.equal(0);
         });
 
         it("creates proposal with removals", async () => {
           const batchId = await fixture.batchIds.freshBatchId();
+          const vs = await fixture.getValidatorSet();
+
           const added: web3.PublicKey[] = [];
-          const removed = toBNArray([0, 1]);
+          // Now we pass actual pubkeys instead of indices
+          const removed = [vs.signers[0], vs.signers[1]];
 
           await fixture.bridgeVSU.call({
             added,
@@ -2186,13 +2175,16 @@ describe("skyline-program", () => {
             batchId
           );
           expect(vscAccount.added.length).to.equal(0);
-          expectBNArrayEqual(vscAccount.removed, [0, 1]);
+          expect(vscAccount.removed.length).to.equal(2);
+          expectPubkeyArrayEqual(vscAccount.removed, removed);
         });
 
         it("creates proposal with both additions and removals", async () => {
           const batchId = await fixture.batchIds.freshBatchId();
+          const vs = await fixture.getValidatorSet();
+
           const added = [newValidators[0].publicKey];
-          const removed = toBNArray([0]);
+          const removed = [vs.signers[0]]; // Remove first validator by pubkey
 
           await fixture.bridgeVSU.call({
             added,
@@ -2205,7 +2197,10 @@ describe("skyline-program", () => {
             batchId
           );
           expect(vscAccount.added.length).to.equal(1);
-          expectBNArrayEqual(vscAccount.removed, [0]);
+          expect(vscAccount.removed.length).to.equal(1);
+          expect(vscAccount.removed[0].toBase58()).to.equal(
+            vs.signers[0].toBase58()
+          );
         });
       });
 
@@ -2217,7 +2212,7 @@ describe("skyline-program", () => {
           try {
             await fixture.bridgeVSU.call({
               added: [newValidators[0].publicKey],
-              removed: toBNArray([]),
+              removed: [],
               batchId: oldBatchId,
               signers: [validators[0]],
             });
@@ -2236,7 +2231,7 @@ describe("skyline-program", () => {
           try {
             await fixture.bridgeVSU.call({
               added: [existingValidator],
-              removed: toBNArray([]),
+              removed: [],
               batchId,
               signers: [validators[0]],
             });
@@ -2259,39 +2254,36 @@ describe("skyline-program", () => {
           try {
             await fixture.bridgeVSU.call({
               added: tooManyVals,
-              removed: toBNArray([]),
+              removed: [],
               batchId,
               signers: [validators[0]],
             });
             expect.fail("Should have thrown account constraint error");
           } catch (err: any) {
-            // Anchor/Borsh constraint violations don't have custom error codes
-            // They throw during serialization with messages like:
-            // "invalid account data for instruction" or "failed to serialize"
             expect(err.message).to.match(
               /invalid|serialize|constraint|max length/i
             );
           }
         });
+
         it.skip("rejects when removing more than MAX_VALIDATORS_CHANGE (10) in one call", async () => {
           const batchId = await fixture.batchIds.freshBatchId();
 
-          // Try to remove 11 validators - will fail at serialization
+          // Generate 11 fake pubkeys for removal
           const tooManyRemovals = Array.from(
             { length: LIMITS.MAX_VALIDATORS_CHANGE + 1 },
-            (_, i) => i
+            () => web3.Keypair.generate().publicKey
           );
 
           try {
             await fixture.bridgeVSU.call({
               added: [],
-              removed: toBNArray(tooManyRemovals),
+              removed: tooManyRemovals,
               batchId,
               signers: [validators[0]],
             });
             expect.fail("Should have thrown account constraint error");
           } catch (err: any) {
-            console.log("Caught error:", err);
             expect(err.message).to.match(
               /invalid|serialize|constraint|max length/i
             );
@@ -2302,14 +2294,15 @@ describe("skyline-program", () => {
           const batchId = await fixture.batchIds.freshBatchId();
           const vs = await fixture.getValidatorSet();
           const currentCount = vs.signers.length;
-          const toRemove = currentCount - (LIMITS.MIN_VALIDATORS - 1); // Would leave only 3 (< MIN_VALIDATORS = 4)
+          const toRemove = currentCount - (LIMITS.MIN_VALIDATORS - 1);
 
-          const removeIndexes = Array.from({ length: toRemove }, (_, i) => i);
+          // Get actual pubkeys to remove
+          const removePubkeys = vs.signers.slice(0, toRemove);
 
           try {
             await fixture.bridgeVSU.call({
               added: [],
-              removed: toBNArray(removeIndexes),
+              removed: removePubkeys,
               batchId,
               signers: [validators[0]],
             });
@@ -2320,15 +2313,14 @@ describe("skyline-program", () => {
           }
         });
 
-        it("rejects with RemovingNonExistentSigner when index out of bounds", async () => {
+        it("rejects with RemovingNonExistentSigner when pubkey not in validator set", async () => {
           const batchId = await fixture.batchIds.freshBatchId();
-          const vs = await fixture.getValidatorSet();
-          const invalidIndex = vs.signers.length;
+          const nonExistentValidator = web3.Keypair.generate().publicKey;
 
           try {
             await fixture.bridgeVSU.call({
               added: [],
-              removed: toBNArray([invalidIndex]),
+              removed: [nonExistentValidator],
               batchId,
               signers: [validators[0]],
             });
@@ -2345,7 +2337,7 @@ describe("skyline-program", () => {
           try {
             await fixture.bridgeVSU.call({
               added: [newValidators[0].publicKey],
-              removed: toBNArray([]),
+              removed: [],
               batchId,
               signers: [],
             });
@@ -2365,7 +2357,7 @@ describe("skyline-program", () => {
           try {
             await fixture.bridgeVSU.call({
               added: [newValidators[0].publicKey],
-              removed: toBNArray([]),
+              removed: [],
               batchId,
               payer: nonValidator,
               signers: [nonValidator],
@@ -2383,7 +2375,7 @@ describe("skyline-program", () => {
           try {
             await fixture.bridgeVSU.call({
               added: [newValidators[0].publicKey],
-              removed: toBNArray([]),
+              removed: [],
               batchId,
               signers: [validators[0], validators[0]],
             });
@@ -2393,31 +2385,41 @@ describe("skyline-program", () => {
             expect(errorCode).to.equal("DuplicateSignersProvided");
           }
         });
-        it("rejects when removed.len > (signers.len + added.len) - prevents underflow", async () => {
+
+        it("rejects with DuplicateValidatorsInRemoved when duplicate pubkeys in removed", async () => {
           const batchId = await fixture.batchIds.freshBatchId();
           const vs = await fixture.getValidatorSet();
-          const currentCount = vs.signers.length;
-
-          // Try to remove more than exist (even after adding some)
-          const added = [newValidators[0].publicKey]; // +1
-          const removeCount = currentCount + 2; // Try to remove currentCount + 2
-
-          // This would cause underflow: 1 + currentCount - (currentCount + 2) = -1
-          const removed = toBNArray(
-            Array.from({ length: removeCount }, (_, i) => i)
-          );
+          const duplicateValidator = vs.signers[0];
 
           try {
             await fixture.bridgeVSU.call({
-              added,
-              removed,
+              added: [],
+              removed: [duplicateValidator, duplicateValidator], // Duplicate!
               batchId,
               signers: [validators[0]],
             });
-            expect.fail("Should have thrown TooManyValidatorsRemoved");
+            expect.fail("Should have thrown DuplicateValidatorsInRemoved");
           } catch (err: any) {
             const errorCode = err.error?.errorCode?.code || err.code;
-            expect(errorCode).to.equal("TooManyValidatorsRemoved");
+            expect(errorCode).to.equal("DuplicateValidatorsInRemoved");
+          }
+        });
+
+        it("rejects with AddingAndRemovingSameSigner when same pubkey in added and removed", async () => {
+          const batchId = await fixture.batchIds.freshBatchId();
+          const newValidator = newValidators[0].publicKey;
+
+          try {
+            await fixture.bridgeVSU.call({
+              added: [newValidator],
+              removed: [newValidator], // Same pubkey in both!
+              batchId,
+              signers: [validators[0]],
+            });
+            expect.fail("Should have thrown AddingAndRemovingSameSigner");
+          } catch (err: any) {
+            const errorCode = err.error?.errorCode?.code || err.code;
+            expect(errorCode).to.equal("AddingAndRemovingSameSigner");
           }
         });
       });
@@ -2437,7 +2439,7 @@ describe("skyline-program", () => {
 
             await fixture.bridgeVSU.call({
               added: newVals,
-              removed: toBNArray([]),
+              removed: [],
               batchId,
               signers: [validators[0]],
             });
@@ -2456,11 +2458,12 @@ describe("skyline-program", () => {
 
           if (currentCount > LIMITS.MIN_VALIDATORS) {
             const toRemove = currentCount - LIMITS.MIN_VALIDATORS;
-            const removeIndexes = Array.from({ length: toRemove }, (_, i) => i);
+            // Get actual pubkeys to remove (from the end to avoid removing active signers)
+            const removePubkeys = vs.signers.slice(-toRemove);
 
             await fixture.bridgeVSU.call({
               added: [],
-              removed: toBNArray(removeIndexes),
+              removed: removePubkeys,
               batchId,
               signers: [validators[0]],
             });
@@ -2468,18 +2471,18 @@ describe("skyline-program", () => {
             const vscAccount = await fixture.bridgeVSU.fetchValidatorSetChange(
               batchId
             );
-            expectBNArrayEqual(vscAccount.removed, removeIndexes);
+            expectPubkeyArrayEqual(vscAccount.removed, removePubkeys);
           }
         });
 
-        it("handles removing highest index validator", async () => {
+        it("handles removing last validator in array", async () => {
           const batchId = await fixture.batchIds.freshBatchId();
           const vs = await fixture.getValidatorSet();
-          const highestIndex = vs.signers.length - 1;
+          const lastValidator = vs.signers[vs.signers.length - 1];
 
           await fixture.bridgeVSU.call({
             added: [newValidators[0].publicKey],
-            removed: toBNArray([highestIndex]),
+            removed: [lastValidator],
             batchId,
             signers: [validators[0]],
           });
@@ -2487,7 +2490,9 @@ describe("skyline-program", () => {
           const vscAccount = await fixture.bridgeVSU.fetchValidatorSetChange(
             batchId
           );
-          expectBNArrayEqual(vscAccount.removed, [highestIndex]);
+          expect(vscAccount.removed[0].toBase58()).to.equal(
+            lastValidator.toBase58()
+          );
         });
 
         it("rejects duplicate validators in added array", async () => {
@@ -2497,7 +2502,7 @@ describe("skyline-program", () => {
           try {
             await fixture.bridgeVSU.call({
               added: [duplicateVal, duplicateVal],
-              removed: toBNArray([]),
+              removed: [],
               batchId,
               signers: [validators[0]],
             });
@@ -2517,7 +2522,7 @@ describe("skyline-program", () => {
 
           await fixture.bridgeVSU.call({
             added: [newValidators[0].publicKey],
-            removed: toBNArray([]),
+            removed: [],
             batchId,
             signers: [validators[0]],
           });
@@ -2529,7 +2534,7 @@ describe("skyline-program", () => {
 
           await fixture.bridgeVSU.call({
             added: [newValidators[0].publicKey],
-            removed: toBNArray([]),
+            removed: [],
             batchId,
             signers: [validators[1]],
           });
@@ -2548,14 +2553,14 @@ describe("skyline-program", () => {
 
           await fixture.bridgeVSU.call({
             added: [newValidators[0].publicKey],
-            removed: toBNArray([]),
+            removed: [],
             batchId,
             signers: [validators[0]],
           });
 
           await fixture.bridgeVSU.call({
             added: [newValidators[0].publicKey],
-            removed: toBNArray([]),
+            removed: [],
             batchId,
             signers: [validators[1], validators[2]],
           });
@@ -2573,7 +2578,7 @@ describe("skyline-program", () => {
 
           await fixture.bridgeVSU.call({
             added: [newValidators[0].publicKey],
-            removed: toBNArray([]),
+            removed: [],
             batchId,
             signers: [validators[0]],
           });
@@ -2581,7 +2586,7 @@ describe("skyline-program", () => {
           try {
             await fixture.bridgeVSU.call({
               added: [newValidators[0].publicKey],
-              removed: toBNArray([]),
+              removed: [],
               batchId,
               signers: [validators[0]],
             });
@@ -2597,15 +2602,15 @@ describe("skyline-program", () => {
 
           await fixture.bridgeVSU.call({
             added: [newValidators[0].publicKey],
-            removed: toBNArray([]),
+            removed: [],
             batchId,
             signers: [validators[0]],
           });
 
           try {
             await fixture.bridgeVSU.call({
-              added: [newValidators[1].publicKey],
-              removed: toBNArray([]),
+              added: [newValidators[1].publicKey], // Different!
+              removed: [],
               batchId,
               signers: [validators[1]],
             });
@@ -2616,12 +2621,13 @@ describe("skyline-program", () => {
           }
         });
 
-        it("rejects with InvalidProposalHash when removed indexes differ", async () => {
+        it("rejects with InvalidProposalHash when removed pubkeys differ", async () => {
           const batchId = await fixture.batchIds.freshBatchId();
+          const vs = await fixture.getValidatorSet();
 
           await fixture.bridgeVSU.call({
             added: [],
-            removed: toBNArray([0]),
+            removed: [vs.signers[0]],
             batchId,
             signers: [validators[0]],
           });
@@ -2629,7 +2635,7 @@ describe("skyline-program", () => {
           try {
             await fixture.bridgeVSU.call({
               added: [],
-              removed: toBNArray([1]),
+              removed: [vs.signers[1]], // Different validator!
               batchId,
               signers: [validators[1]],
             });
@@ -2656,13 +2662,10 @@ describe("skyline-program", () => {
         // Execute VSU in one transaction
         await fixture.bridgeVSU.call({
           added: [newValidator],
-          removed: toBNArray([]),
+          removed: [],
           batchId,
           signers: uniqueSigners,
         });
-
-        // Don't try to fetch VSC account - it's deleted after execution!
-        // Instead, verify the validator set was updated
 
         const updatedVs = await fixture.getValidatorSet();
 
@@ -2683,7 +2686,7 @@ describe("skyline-program", () => {
 
         const proposalParams = {
           added: [newValidator],
-          removed: toBNArray([]),
+          removed: [] as web3.PublicKey[],
         };
 
         // Step 1: First validator creates the proposal
@@ -2693,7 +2696,6 @@ describe("skyline-program", () => {
           signers: [validators[0]],
         });
 
-        // Fetch BEFORE final approval (account still exists)
         let vscAccount = await fixture.bridgeVSU.fetchValidatorSetChange(
           batchId
         );
@@ -2707,14 +2709,9 @@ describe("skyline-program", () => {
             signers: [validators[i]],
           });
 
-          // Can still fetch here (not executed yet)
           vscAccount = await fixture.bridgeVSU.fetchValidatorSetChange(batchId);
           expect(vscAccount.signers.length).to.equal(i + 1);
         }
-
-        // Verify we're at threshold - 1
-        vscAccount = await fixture.bridgeVSU.fetchValidatorSetChange(batchId);
-        expect(vscAccount.signers.length).to.equal(threshold - 1);
 
         // Step 3: Final approval that triggers execution
         await fixture.bridgeVSU.call({
@@ -2723,37 +2720,31 @@ describe("skyline-program", () => {
           signers: [validators[threshold - 1]],
         });
 
-        // Don't fetch VSC account here - it's deleted!
-        // const vscAccount = await fixture.bridgeVSU.fetchValidatorSetChange(batchId);
-
-        // Instead, verify validator set was updated
+        // Verify validator set was updated
         const updatedVs = await fixture.getValidatorSet();
         expect(updatedVs.signers.length).to.equal(vs.signers.length + 1);
         expect(updatedVs.lastBatchId.toString()).to.equal(batchId.toString());
 
-        // Verify the new validator was added
         const newValidatorAdded = updatedVs.signers.some(
           (signer) => signer.toBase58() === newValidator.toBase58()
         );
         expect(newValidatorAdded).to.be.true;
       });
 
-      it("executes removal of validators correctly", async () => {
+      it("executes removal of single validator correctly", async () => {
         const batchId = await fixture.batchIds.freshBatchId();
         const vs = await fixture.getValidatorSet();
         const threshold = vs.threshold;
 
-        // Remove the last validator (highest index)
-        const indexToRemove = vs.signers.length - 1;
-        const validatorToRemove = vs.signers[indexToRemove];
+        // Remove the last validator
+        const validatorToRemove = vs.signers[vs.signers.length - 1];
 
-        // Store exact parameters
         const proposalParams = {
-          added: [],
-          removed: toBNArray([indexToRemove]),
+          added: [] as web3.PublicKey[],
+          removed: [validatorToRemove],
         };
 
-        // Step 1: Create proposal with first validator
+        // Step 1: Create proposal
         await fixture.bridgeVSU.call({
           ...proposalParams,
           batchId,
@@ -2763,7 +2754,7 @@ describe("skyline-program", () => {
         // Step 2: Add approvals until threshold
         for (let i = 1; i < threshold; i++) {
           await fixture.bridgeVSU.call({
-            ...proposalParams, // Same params
+            ...proposalParams,
             batchId,
             signers: [validators[i]],
           });
@@ -2787,13 +2778,11 @@ describe("skyline-program", () => {
         const threshold = vs.threshold;
 
         const newValidator = web3.Keypair.generate().publicKey;
-        const indexToRemove = vs.signers.length - 1;
-        const validatorToRemove = vs.signers[indexToRemove];
+        const validatorToRemove = vs.signers[vs.signers.length - 1];
 
-        // Store exact parameters
         const proposalParams = {
           added: [newValidator],
-          removed: toBNArray([indexToRemove]),
+          removed: [validatorToRemove],
         };
 
         // Step 1: Create proposal
@@ -2806,7 +2795,7 @@ describe("skyline-program", () => {
         // Step 2: Add approvals until threshold
         for (let i = 1; i < threshold; i++) {
           await fixture.bridgeVSU.call({
-            ...proposalParams, // Same params
+            ...proposalParams,
             batchId,
             signers: [validators[i]],
           });
@@ -2830,6 +2819,52 @@ describe("skyline-program", () => {
           (signer) => signer.toBase58() === newValidator.toBase58()
         );
         expect(newValidatorAdded).to.be.true;
+      });
+
+      it("executes removal of multiple validators in single proposal", async () => {
+        const batchId = await fixture.batchIds.freshBatchId();
+        const vs = await fixture.getValidatorSet();
+        const threshold = vs.threshold;
+
+        // Ensure we have enough validators to remove 2 and stay above MIN
+        if (vs.signers.length <= LIMITS.MIN_VALIDATORS + 1) {
+          console.log(
+            "Skipping: not enough validators to test multiple removal"
+          );
+          return;
+        }
+
+        // Remove last two validators
+        const validatorsToRemove = [
+          vs.signers[vs.signers.length - 1],
+          vs.signers[vs.signers.length - 2],
+        ];
+
+        const proposalParams = {
+          added: [] as web3.PublicKey[],
+          removed: validatorsToRemove,
+        };
+
+        // Collect enough approvals
+        for (let i = 0; i < threshold; i++) {
+          await fixture.bridgeVSU.call({
+            ...proposalParams,
+            batchId,
+            signers: [validators[i]],
+          });
+        }
+
+        // Verify execution
+        const updatedVs = await fixture.getValidatorSet();
+        expect(updatedVs.signers.length).to.equal(vs.signers.length - 2);
+
+        // Verify both validators were removed
+        for (const removed of validatorsToRemove) {
+          const stillExists = updatedVs.signers.some(
+            (s) => s.toBase58() === removed.toBase58()
+          );
+          expect(stillExists).to.be.false;
+        }
       });
     });
   });
