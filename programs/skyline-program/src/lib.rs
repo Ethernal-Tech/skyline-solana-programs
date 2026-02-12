@@ -57,7 +57,7 @@ pub use events::*;
 pub mod helpers;
 pub use helpers::*;
 
-declare_id!("BRW3yQ88gEtrsRZssGsrQfVVBirDmzAtCF6VBPLF4Jvh");
+declare_id!("CkTNcuk9EELmuR65eCfzKfz8XpDvJ27FPFHauGHVD1E9");
 
 #[program]
 pub mod skyline_program {

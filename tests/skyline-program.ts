@@ -2385,31 +2385,41 @@ describe("skyline-program", () => {
             expect(errorCode).to.equal("DuplicateSignersProvided");
           }
         });
-        it("rejects when removed.len > (signers.len + added.len) - prevents underflow", async () => {
+
+        it("rejects with DuplicateValidatorsInRemoved when duplicate pubkeys in removed", async () => {
           const batchId = await fixture.batchIds.freshBatchId();
           const vs = await fixture.getValidatorSet();
-          const currentCount = vs.signers.length;
-
-          // Try to remove more than exist (even after adding some)
-          const added = [newValidators[0].publicKey]; // +1
-          const removeCount = currentCount + 2; // Try to remove currentCount + 2
-
-          // This would cause underflow: 1 + currentCount - (currentCount + 2) = -1
-          const removed = toBNArray(
-            Array.from({ length: removeCount }, (_, i) => i),
-          );
+          const duplicateValidator = vs.signers[0];
 
           try {
             await fixture.bridgeVSU.call({
-              added,
-              removed,
+              added: [],
+              removed: [duplicateValidator, duplicateValidator], // Duplicate!
               batchId,
               signers: [validators[0]],
             });
-            expect.fail("Should have thrown TooManyValidatorsRemoved");
+            expect.fail("Should have thrown DuplicateValidatorsInRemoved");
           } catch (err: any) {
             const errorCode = err.error?.errorCode?.code || err.code;
-            expect(errorCode).to.equal("TooManyValidatorsRemoved");
+            expect(errorCode).to.equal("DuplicateValidatorsInRemoved");
+          }
+        });
+
+        it("rejects with AddingAndRemovingSameSigner when same pubkey in added and removed", async () => {
+          const batchId = await fixture.batchIds.freshBatchId();
+          const newValidator = newValidators[0].publicKey;
+
+          try {
+            await fixture.bridgeVSU.call({
+              added: [newValidator],
+              removed: [newValidator], // Same pubkey in both!
+              batchId,
+              signers: [validators[0]],
+            });
+            expect.fail("Should have thrown AddingAndRemovingSameSigner");
+          } catch (err: any) {
+            const errorCode = err.error?.errorCode?.code || err.code;
+            expect(errorCode).to.equal("AddingAndRemovingSameSigner");
           }
         });
       });

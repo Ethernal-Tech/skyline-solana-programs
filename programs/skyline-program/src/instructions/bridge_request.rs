@@ -8,7 +8,7 @@
 use crate::*;
 use anchor_spl::{
     associated_token::{create, get_associated_token_address, AssociatedToken, Create},
-    token::{self, Burn, Mint, TokenAccount, Transfer},
+    token::{self, transfer_checked, Burn, Mint, TokenAccount, TransferChecked},
 };
 
 /// Account structure for the bridge_request instruction.

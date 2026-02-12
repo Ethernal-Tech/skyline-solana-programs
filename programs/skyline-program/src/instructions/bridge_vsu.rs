@@ -63,8 +63,6 @@ impl<'info> BridgeVSU<'info> {
             &mut ctx.accounts.validator_set_change;
         let payer = &ctx.accounts.payer;
 
-        let proposal_hash =
-            blake3::hash(&[Self::concat_pubkeys(&added), Self::concat_u64(&removed)].concat());
 
         // Validate no duplicates in added list
         if !added.is_empty() {
@@ -101,13 +99,18 @@ impl<'info> BridgeVSU<'info> {
                 !added.iter().any(|pk| validator_set.signers.contains(pk)),
                 CustomError::AddingExistingSigner
             );
+            // Validate removed validators actually exist
+            require!(
+                removed.iter().all(|pk| validator_set.signers.contains(pk)),
+                CustomError::RemovingNonExistentSigner
+            );
             // Validate we won't underflow when calculating new validator count
             require!(
                 removed.len() <= signers_len + added.len(),
                 CustomError::TooManyValidatorsRemoved
             );
 
-            let new_signers_len = added.len() + signers_len - removed.len();
+            let new_signers_len = signers_len + added.len() - removed.len();
 
             require!(
                 new_signers_len <= MAX_VALIDATORS as usize,

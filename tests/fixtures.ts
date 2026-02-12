@@ -772,7 +772,7 @@ export class BridgeRequestHelper {
   constructor(
     program: Program<SkylineProgram>,
     owner: anchor.Wallet,
-    vaultPDA: web3.PublicKey,
+    vaultPDA: web3.PublicKey
   ) {
     this.program = program;
     this.owner = owner;
@@ -1090,7 +1090,7 @@ export class BridgeVSUFixture {
     program: Program<SkylineProgram>,
     connection: web3.Connection,
     validatorSetPDA: web3.PublicKey,
-    defaultPayer: web3.Keypair,
+    defaultPayer: web3.Keypair
   ) {
     this.program = program;
     this.connection = connection;
@@ -1206,7 +1206,7 @@ export class SkylineTestFixture {
       ctx.program,
       ctx.connection,
       this.pdas.validatorSet(),
-      ctx.owner.payer,
+      ctx.owner.payer
     );
   }
 
