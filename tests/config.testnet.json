@@ -1,0 +1,8 @@
+{
+  "network": "devnet",
+  "programId": "CkTNcuk9EELmuR65eCfzKfz8XpDvJ27FPFHauGHVD1E9",
+  "validatorSetPda": "Gh9TDexu4uxD7D5VKVJubTG1TCxqt7ehppEnUFrWEnus",
+  "vaultPda": "esCyf5tH2oZw5nYsjmD5iLGuP3RP1EuewN4H9McPRrZ",
+  "mintTransfer": "3zejCKpHvm8KYC5RLRrsNtnpDimXKPERCUytqVxaNYYB",
+  "mintBurn": "8ExoB4oyF8xN3WX2h319GU3Ygn5HApPNsZWkiGmAwsvK"
+}

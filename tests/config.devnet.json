@@ -1,0 +1,8 @@
+{
+  "network": "testnet",
+  "programId": "CkTNcuk9EELmuR65eCfzKfz8XpDvJ27FPFHauGHVD1E9",
+  "validatorSetPda": "",
+  "vaultPda": "",
+  "mintTransfer": "",
+  "mintBurn": ""
+}
