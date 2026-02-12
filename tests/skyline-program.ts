@@ -22,37 +22,12 @@ import {
 } from "@solana/spl-token";
 
 /**
- * Helper to compare BN arrays by their numeric values
- */
-function expectBNArrayEqual(
-  actual: anchor.BN[],
-  expected: number[],
-  message?: string,
-) {
-  expect(actual.length, `${message || ""} - length mismatch`).to.equal(
-    expected.length,
-  );
-  actual.forEach((bn, i) => {
-    expect(bn.toNumber(), `${message || ""} - value at index ${i}`).to.equal(
-      expected[i],
-    );
-  });
-}
-
-/**
- * Helper to convert number[] to BN[]
- */
-function toBNArray(nums: number[]): anchor.BN[] {
-  return nums.map((n) => new anchor.BN(n));
-}
-
-/**
  * Airdrop SOL to an account
  */
 async function airdrop(
   connection: web3.Connection,
   publicKey: web3.PublicKey,
-  amount: number = 10 * web3.LAMPORTS_PER_SOL,
+  amount: number = 10 * web3.LAMPORTS_PER_SOL
 ): Promise<void> {
   const signature = await connection.requestAirdrop(publicKey, amount);
   const latestBlockhash = await connection.getLatestBlockhash();
@@ -95,7 +70,7 @@ describe("skyline-program", () => {
 
         await fixture.initialize.expectError(
           validatorPubkeys,
-          "MinValidatorsNotMet",
+          "MinValidatorsNotMet"
         );
       });
 
@@ -118,7 +93,7 @@ describe("skyline-program", () => {
 
         await fixture.initialize.expectError(
           duplicateValidators,
-          "ValidatorsNotUnique",
+          "ValidatorsNotUnique"
         );
       });
 
@@ -158,7 +133,7 @@ describe("skyline-program", () => {
             assertValidBump(vault.bump);
 
             console.log(
-              "  ℹ ValidatorSet already initialized and matches expected state",
+              "  ℹ ValidatorSet already initialized and matches expected state"
             );
             return;
           } catch (e: any) {
@@ -171,7 +146,7 @@ describe("skyline-program", () => {
                 `vsPDA=${vsPDA.toBase58()}`,
                 "",
                 `Error: ${e.message}`,
-              ].join("\n"),
+              ].join("\n")
             );
           }
         }
@@ -212,7 +187,7 @@ describe("skyline-program", () => {
         try {
           await fixture.initialize.call(
             validators.slice(5, 12).map((v) => v.publicKey),
-            3,
+            3
           );
         } catch (e: any) {
           threw = true;
@@ -226,7 +201,7 @@ describe("skyline-program", () => {
         // Verify state unchanged
         const after = await fixture.getValidatorSet();
         expect(after.lastBatchId.toString()).to.equal(
-          before.lastBatchId.toString(),
+          before.lastBatchId.toString()
         );
         expect(after.signers.length).to.equal(before.signers.length);
       });
@@ -272,7 +247,7 @@ describe("skyline-program", () => {
             validators: [validators[0], validators[1], validators[15]], // validators[15] not in set
             vaultPDA,
           },
-          "InvalidSigner",
+          "InvalidSigner"
         );
 
         await assertNoBridgingTransaction(fixture.accounts, batchId);
@@ -288,7 +263,7 @@ describe("skyline-program", () => {
             validators: [validators[0], validators[1], validators[1]], // duplicate
             vaultPDA,
           },
-          "DuplicateSignersProvided",
+          "DuplicateSignersProvided"
         );
 
         await assertNoBridgingTransaction(fixture.accounts, batchId);
@@ -302,7 +277,7 @@ describe("skyline-program", () => {
             batchId,
             recipient.publicKey,
             mint,
-            vaultPDA,
+            vaultPDA
           );
         } catch (err: any) {
           thrown = true;
@@ -345,7 +320,7 @@ describe("skyline-program", () => {
             validators[0].publicKey,
             validators[1].publicKey,
             validators[2].publicKey,
-          ],
+          ]
         );
       });
 
@@ -376,7 +351,7 @@ describe("skyline-program", () => {
             validators[0].publicKey,
             validators[1].publicKey,
             validators[2].publicKey,
-          ],
+          ]
         );
       });
     });
@@ -405,13 +380,13 @@ describe("skyline-program", () => {
             validators[0].publicKey,
             validators[1].publicKey,
             validators[2].publicKey,
-          ],
+          ]
         );
 
         // Verify recipient ATA not created yet
         const recipientAta = getAssociatedTokenAddressSync(
           mint,
-          recipient.publicKey,
+          recipient.publicKey
         );
         const info = await provider.connection.getAccountInfo(recipientAta);
         expect(info).to.equal(null);
@@ -427,7 +402,7 @@ describe("skyline-program", () => {
             validators: [validators[3], validators[4], validators[15]],
             vaultPDA,
           },
-          "InvalidSigner",
+          "InvalidSigner"
         );
 
         await assertBridgingTransactionSigners(
@@ -438,7 +413,7 @@ describe("skyline-program", () => {
             validators[0].publicKey,
             validators[1].publicKey,
             validators[2].publicKey,
-          ],
+          ]
         );
       });
       it("rejects duplicate signers; keeps approvals unchanged", async () => {
@@ -451,7 +426,7 @@ describe("skyline-program", () => {
             validators: [validators[3], validators[4], validators[4]],
             vaultPDA,
           },
-          "DuplicateSignersProvided",
+          "DuplicateSignersProvided"
         );
 
         await assertBridgingTransactionSigners(
@@ -462,7 +437,7 @@ describe("skyline-program", () => {
             validators[0].publicKey,
             validators[1].publicKey,
             validators[2].publicKey,
-          ],
+          ]
         );
       });
 
@@ -476,7 +451,7 @@ describe("skyline-program", () => {
             validators: [validators[3], validators[4], validators[1]], // validators[1] already approved
             vaultPDA,
           },
-          "SignerAlreadyApproved",
+          "SignerAlreadyApproved"
         );
 
         await assertBridgingTransactionSigners(
@@ -487,17 +462,17 @@ describe("skyline-program", () => {
             validators[0].publicKey,
             validators[1].publicKey,
             validators[2].publicKey,
-          ],
+          ]
         );
       });
 
       it("reaches quorum, transfers tokens, clears pending tx", async () => {
         const recipientAta = getAssociatedTokenAddressSync(
           mint,
-          recipient.publicKey,
+          recipient.publicKey
         );
         const beforeBalance = await fixture.tokenBalances.getBalance(
-          recipientAta,
+          recipientAta
         );
 
         // Add 3 more approvals to reach threshold of 5
@@ -514,7 +489,7 @@ describe("skyline-program", () => {
         expect(vs.lastBatchId.toNumber()).to.equal(batchId);
 
         const afterBalance = await fixture.tokenBalances.getBalance(
-          recipientAta,
+          recipientAta
         );
         expect(afterBalance - beforeBalance).to.equal(BigInt(100));
 
@@ -532,7 +507,7 @@ describe("skyline-program", () => {
           owner.payer,
           otherMint,
           vaultPDA,
-          true,
+          true
         );
 
         const quorumSigners = validators.slice(0, 5);
@@ -546,11 +521,11 @@ describe("skyline-program", () => {
               mintToken: mint, // Claiming to bridge mint
               recipientAta: getAssociatedTokenAddressSync(
                 mint,
-                recipient.publicKey,
+                recipient.publicKey
               ),
               vaultAta: otherMintVaultAta.address, // But vault ATA is for otherMint
             },
-            quorumSigners,
+            quorumSigners
           );
           expect.fail("Should have thrown InvalidVault");
         } catch (e: any) {
@@ -569,7 +544,7 @@ describe("skyline-program", () => {
           provider.connection,
           owner.payer,
           mint,
-          notVaultOwner.publicKey,
+          notVaultOwner.publicKey
         );
 
         const quorumSigners = validators.slice(0, 5);
@@ -584,11 +559,11 @@ describe("skyline-program", () => {
               mintToken: mint,
               recipientAta: getAssociatedTokenAddressSync(
                 mint,
-                recipient.publicKey,
+                recipient.publicKey
               ),
               vaultAta: wrongOwnerAta.address, // correct mint, wrong owner
             },
-            quorumSigners,
+            quorumSigners
           );
         } catch (e: any) {
           thrown = true;
@@ -614,11 +589,11 @@ describe("skyline-program", () => {
               mintToken: mint,
               recipientAta: getAssociatedTokenAddressSync(
                 mint,
-                recipient.publicKey,
+                recipient.publicKey
               ),
               vaultAta: fakeVaultAta.publicKey, // Not canonical!
             },
-            quorumSigners,
+            quorumSigners
           );
           expect.fail("Should have thrown InvalidVault");
         } catch (e: any) {
@@ -651,7 +626,7 @@ describe("skyline-program", () => {
             validators: validators.slice(3, 5),
             vaultPDA,
           },
-          "BridgingTransactionMismatch",
+          "BridgingTransactionMismatch"
         );
 
         // Approvals unchanged
@@ -663,7 +638,7 @@ describe("skyline-program", () => {
             validators[0].publicKey,
             validators[1].publicKey,
             validators[2].publicKey,
-          ],
+          ]
         );
       });
 
@@ -691,22 +666,22 @@ describe("skyline-program", () => {
               mintToken: mint,
               recipientAta: getAssociatedTokenAddressSync(
                 mint,
-                otherRecipient.publicKey,
+                otherRecipient.publicKey
               ),
               vaultAta: getAssociatedTokenAddressSync(mint, vaultPDA, true),
             },
-            validators.slice(3, 5),
+            validators.slice(3, 5)
           );
         } catch (err: any) {
           thrown = true;
           expect(err.error?.errorCode?.code).to.equal(
-            "BridgingTransactionMismatch",
+            "BridgingTransactionMismatch"
           );
         }
 
         expect(
           thrown,
-          "should have thrown BridgingTransactionMismatch",
+          "should have thrown BridgingTransactionMismatch"
         ).to.equal(true);
 
         await assertBridgingTransactionSigners(
@@ -717,7 +692,7 @@ describe("skyline-program", () => {
             validators[0].publicKey,
             validators[1].publicKey,
             validators[2].publicKey,
-          ],
+          ]
         );
       });
 
@@ -745,26 +720,26 @@ describe("skyline-program", () => {
               mintToken: otherMint, // mismatch
               recipientAta: getAssociatedTokenAddressSync(
                 otherMint,
-                recipient.publicKey,
+                recipient.publicKey
               ),
               vaultAta: getAssociatedTokenAddressSync(
                 otherMint,
                 vaultPDA,
-                true,
+                true
               ),
             },
-            validators.slice(3, 5),
+            validators.slice(3, 5)
           );
         } catch (err: any) {
           thrown = true;
           expect(err.error?.errorCode?.code).to.equal(
-            "BridgingTransactionMismatch",
+            "BridgingTransactionMismatch"
           );
         }
 
         expect(
           thrown,
-          "should have thrown BridgingTransactionMismatch",
+          "should have thrown BridgingTransactionMismatch"
         ).to.equal(true);
 
         await assertBridgingTransactionSigners(
@@ -775,7 +750,7 @@ describe("skyline-program", () => {
             validators[0].publicKey,
             validators[1].publicKey,
             validators[2].publicKey,
-          ],
+          ]
         );
       });
     });
@@ -789,10 +764,10 @@ describe("skyline-program", () => {
 
         const recipientAta = getAssociatedTokenAddressSync(
           mint,
-          recipient.publicKey,
+          recipient.publicKey
         );
         const beforeBalance = await fixture.tokenBalances.getBalance(
-          recipientAta,
+          recipientAta
         );
 
         // 5 validators => quorum
@@ -810,7 +785,7 @@ describe("skyline-program", () => {
         expect(afterVs.lastBatchId.toNumber()).to.be.greaterThan(beforeLast);
 
         const afterBalance = await fixture.tokenBalances.getBalance(
-          recipientAta,
+          recipientAta
         );
         expect(afterBalance - beforeBalance).to.equal(BigInt(100));
 
@@ -824,11 +799,11 @@ describe("skyline-program", () => {
 
         const recipientAta = getAssociatedTokenAddressSync(
           mintVaultAuthority,
-          recipient.publicKey,
+          recipient.publicKey
         );
 
         const beforeBalance = await fixture.tokenBalances.getBalance(
-          recipientAta,
+          recipientAta
         );
 
         // Quorum in one submission
@@ -842,7 +817,7 @@ describe("skyline-program", () => {
         });
 
         const afterBalance = await fixture.tokenBalances.getBalance(
-          recipientAta,
+          recipientAta
         );
         expect(afterBalance - beforeBalance).to.equal(BigInt(100));
 
@@ -860,7 +835,7 @@ describe("skyline-program", () => {
 
         const recipientAta = getAssociatedTokenAddressSync(
           mint,
-          recipient.publicKey,
+          recipient.publicKey
         );
         const balBefore = await fixture.tokenBalances.getBalance(recipientAta);
 
@@ -903,10 +878,10 @@ describe("skyline-program", () => {
         // ATA doesn't exist yet
         const recipientAta = getAssociatedTokenAddressSync(
           mint,
-          newRecipient.publicKey,
+          newRecipient.publicKey
         );
         const ataAccountBefore = await provider.connection.getAccountInfo(
-          recipientAta,
+          recipientAta
         );
         expect(ataAccountBefore).to.be.null;
 
@@ -921,18 +896,18 @@ describe("skyline-program", () => {
             recipientAta, // Will be created automatically!
             vaultAta: getAssociatedTokenAddressSync(mint, vaultPDA, true),
           },
-          quorumSigners,
+          quorumSigners
         );
 
         // ATA was created and has tokens
         const ataAccountAfter = await provider.connection.getAccountInfo(
-          recipientAta,
+          recipientAta
         );
         expect(ataAccountAfter).to.not.be.null;
 
         const recipientAtaData = await getAccount(
           provider.connection,
-          recipientAta,
+          recipientAta
         );
         expect(Number(recipientAtaData.amount)).to.equal(100);
       });
@@ -954,7 +929,7 @@ describe("skyline-program", () => {
               recipientAta: nonAtaKeypair.publicKey, // Wrong address!
               vaultAta: getAssociatedTokenAddressSync(mint, vaultPDA, true),
             },
-            quorumSigners,
+            quorumSigners
           );
           expect.fail("Should have thrown InvalidTokenAccount");
         } catch (e: any) {
@@ -969,7 +944,7 @@ describe("skyline-program", () => {
         // This IS a canonical ATA, but for wrongRecipient, not recipient
         const wrongRecipientAta = getAssociatedTokenAddressSync(
           mint,
-          wrongRecipient.publicKey,
+          wrongRecipient.publicKey
         );
 
         const quorumSigners = validators.slice(0, 5);
@@ -984,7 +959,7 @@ describe("skyline-program", () => {
               recipientAta: wrongRecipientAta, // ← But ATA for wrongRecipient!
               vaultAta: getAssociatedTokenAddressSync(mint, vaultPDA, true),
             },
-            quorumSigners,
+            quorumSigners
           );
           expect.fail("Should have thrown InvalidTokenAccount");
         } catch (e: any) {
@@ -999,13 +974,13 @@ describe("skyline-program", () => {
         const payerKeypair = (provider.wallet as anchor.Wallet).payer;
         const wrongMint = await fixture.mints.create(
           payerKeypair.publicKey, // authority
-          9, // decimals
+          9 // decimals
         );
 
         // This IS a canonical ATA for (recipient, wrongMint)
         const wrongMintAta = getAssociatedTokenAddressSync(
           wrongMint,
-          recipient.publicKey,
+          recipient.publicKey
         );
 
         const quorumSigners = validators.slice(0, 5);
@@ -1020,7 +995,7 @@ describe("skyline-program", () => {
               recipientAta: wrongMintAta, // ← But ATA for wrongMint!
               vaultAta: getAssociatedTokenAddressSync(mint, vaultPDA, true),
             },
-            quorumSigners,
+            quorumSigners
           );
           expect.fail("Should have thrown InvalidTokenAccount");
         } catch (e: any) {
@@ -1035,7 +1010,7 @@ describe("skyline-program", () => {
           provider.connection,
           owner.payer,
           mint,
-          recipient.publicKey,
+          recipient.publicKey
         );
 
         const beforeBalance = await fixture.tokenBalances.snapshot(ata.address);
@@ -1052,7 +1027,7 @@ describe("skyline-program", () => {
 
         const delta = await fixture.tokenBalances.getBalanceDelta(
           ata.address,
-          beforeBalance,
+          beforeBalance
         );
         expect(delta).to.equal(BigInt(100));
 
@@ -1105,12 +1080,12 @@ describe("skyline-program", () => {
         const vaultAta = getAssociatedTokenAddressSync(
           limitedMint,
           vaultPDA,
-          true,
+          true
         );
 
         // Verify vault has exactly 50 tokens
         const vaultBalance = await fixture.mints.getTokenAccountBalance(
-          vaultAta,
+          vaultAta
         );
         expect(vaultBalance).to.equal(50);
 
@@ -1133,7 +1108,7 @@ describe("skyline-program", () => {
         }
 
         expect(thrown, "should fail due to insufficient balance").to.equal(
-          true,
+          true
         );
 
         // Token program returns "insufficient funds" error
@@ -1144,7 +1119,7 @@ describe("skyline-program", () => {
 
         // Vault balance unchanged
         const finalBalance = await fixture.mints.getTokenAccountBalance(
-          vaultAta,
+          vaultAta
         );
         expect(finalBalance).to.equal(50);
       });
@@ -1159,7 +1134,7 @@ describe("skyline-program", () => {
         const vaultAta = getAssociatedTokenAddressSync(
           noVaultAtaMint,
           vaultPDA,
-          true,
+          true
         );
 
         // Verify vault ATA doesn't exist
@@ -1195,7 +1170,7 @@ describe("skyline-program", () => {
 
         expect(
           hasExpectedError,
-          `Expected account-related error, got: ${errorMsg}`,
+          `Expected account-related error, got: ${errorMsg}`
         ).to.equal(true);
 
         // No pending transaction created
@@ -1260,10 +1235,10 @@ describe("skyline-program", () => {
 
         const recipientAta = getAssociatedTokenAddressSync(
           mint,
-          recipient.publicKey,
+          recipient.publicKey
         );
         const beforeBalance = await fixture.tokenBalances.getBalance(
-          recipientAta,
+          recipientAta
         );
 
         // Should succeed with exact next batch ID
@@ -1280,7 +1255,7 @@ describe("skyline-program", () => {
         expect(vsAfter.lastBatchId.toNumber()).to.equal(nextBatchId);
 
         const afterBalance = await fixture.tokenBalances.getBalance(
-          recipientAta,
+          recipientAta
         );
         expect(afterBalance - beforeBalance).to.equal(BigInt(100));
 
@@ -1297,7 +1272,7 @@ describe("skyline-program", () => {
         const freezableMint = await fixture.mints.createWithFreezeAuthority(
           owner.publicKey,
           freezeAuthority.publicKey,
-          9,
+          9
         );
 
         // Fund vault for this mint
@@ -1308,19 +1283,19 @@ describe("skyline-program", () => {
           provider.connection,
           owner.payer,
           freezableMint,
-          recipient.publicKey,
+          recipient.publicKey
         );
 
         // Freeze the recipient's token account
         await fixture.mints.freezeTokenAccount(
           freezableMint,
           recipientAta.address,
-          freezeAuthority,
+          freezeAuthority
         );
 
         // Verify it's frozen
         const ataInfo = await provider.connection.getAccountInfo(
-          recipientAta.address,
+          recipientAta.address
         );
         expect(ataInfo, "ATA should exist").to.not.equal(null);
 
@@ -1347,7 +1322,7 @@ describe("skyline-program", () => {
         const lowerMsg = errorMsg.toLowerCase();
         expect(
           lowerMsg.includes("frozen") || lowerMsg.includes("freeze"),
-          `Expected frozen account error, got: ${errorMsg}`,
+          `Expected frozen account error, got: ${errorMsg}`
         ).to.equal(true);
 
         // No state changes
@@ -1362,18 +1337,18 @@ describe("skyline-program", () => {
         const freezableMint = await fixture.mints.createWithFreezeAuthority(
           owner.publicKey,
           freezeAuthority.publicKey,
-          9,
+          9
         );
 
         await fixture.mints.mintTo(freezableMint, vaultPDA, 1000, true);
 
         const recipientAta = getAssociatedTokenAddressSync(
           freezableMint,
-          recipient.publicKey,
+          recipient.publicKey
         );
 
         const beforeBalance = await fixture.tokenBalances.getBalance(
-          recipientAta,
+          recipientAta
         );
 
         // Should succeed - account exists but is NOT frozen
@@ -1387,7 +1362,7 @@ describe("skyline-program", () => {
         });
 
         const afterBalance = await fixture.tokenBalances.getBalance(
-          recipientAta,
+          recipientAta
         );
         expect(afterBalance - beforeBalance).to.equal(BigInt(100));
 
@@ -1408,7 +1383,7 @@ describe("skyline-program", () => {
 
     // Standard test parameters
     const validReceiver = Buffer.from(
-      "0x1234567890abcdef1234567890abcdef12345678",
+      "0x1234567890abcdef1234567890abcdef12345678"
     );
     const destinationChain = 1; // Ethereum
 
@@ -1416,7 +1391,7 @@ describe("skyline-program", () => {
       // Airdrop to user
       await provider.connection.requestAirdrop(
         user.publicKey,
-        10 * web3.LAMPORTS_PER_SOL,
+        10 * web3.LAMPORTS_PER_SOL
       );
       await new Promise((resolve) => setTimeout(resolve, 1000));
 
@@ -1447,19 +1422,19 @@ describe("skyline-program", () => {
 
         const userAta = getAssociatedTokenAddressSync(
           transferMint,
-          user.publicKey,
+          user.publicKey
         );
         const vaultAta = getAssociatedTokenAddressSync(
           transferMint,
           vaultPDA,
-          true,
+          true
         );
 
         const userBalanceBefore = await fixture.tokenBalances.getBalance(
-          userAta,
+          userAta
         );
         const vaultBalanceBefore = await fixture.tokenBalances.getBalance(
-          vaultAta,
+          vaultAta
         );
 
         // Execute bridge request
@@ -1473,10 +1448,10 @@ describe("skyline-program", () => {
 
         // Verify balances changed correctly
         const userBalanceAfter = await fixture.tokenBalances.getBalance(
-          userAta,
+          userAta
         );
         const vaultBalanceAfter = await fixture.tokenBalances.getBalance(
-          vaultAta,
+          vaultAta
         );
 
         expect(userBalanceBefore - userBalanceAfter).to.equal(BigInt(100));
@@ -1485,7 +1460,7 @@ describe("skyline-program", () => {
         // Verify bridge_request_count incremented
         const vsAfter = await fixture.getValidatorSet();
         expect(vsAfter.bridgeRequestCount.toNumber()).to.equal(
-          requestCountBefore + 1,
+          requestCountBefore + 1
         );
 
         // Verify event was emitted
@@ -1494,7 +1469,7 @@ describe("skyline-program", () => {
         expect(event!.sender.toBase58()).to.equal(user.publicKey.toBase58());
         expect(event!.amount.toNumber()).to.equal(100);
         expect(Buffer.from(event!.receiver).toString("hex")).to.equal(
-          validReceiver.toString("hex"),
+          validReceiver.toString("hex")
         );
         expect(event!.destinationChain).to.equal(destinationChain);
         expect(event!.mintToken.toBase58()).to.equal(transferMint.toBase58());
@@ -1536,10 +1511,10 @@ describe("skyline-program", () => {
         const vaultAta = getAssociatedTokenAddressSync(
           transferMint,
           vaultPDA,
-          true,
+          true
         );
         const vaultBalanceBefore = await fixture.tokenBalances.getBalance(
-          vaultAta,
+          vaultAta
         );
 
         // Execute 3 sequential requests
@@ -1558,7 +1533,7 @@ describe("skyline-program", () => {
         expect(vsAfter.bridgeRequestCount.toNumber()).to.equal(startCount + 3);
 
         const vaultBalanceAfter = await fixture.tokenBalances.getBalance(
-          vaultAta,
+          vaultAta
         );
         expect(vaultBalanceAfter - vaultBalanceBefore).to.equal(BigInt(30));
       });
@@ -1575,7 +1550,7 @@ describe("skyline-program", () => {
 
         const userAta = getAssociatedTokenAddressSync(burnMint, user.publicKey);
         const userBalanceBefore = await fixture.tokenBalances.getBalance(
-          userAta,
+          userAta
         );
 
         // Get mint supply before
@@ -1593,7 +1568,7 @@ describe("skyline-program", () => {
 
         // Verify tokens were burned (not transferred)
         const userBalanceAfter = await fixture.tokenBalances.getBalance(
-          userAta,
+          userAta
         );
         expect(userBalanceBefore - userBalanceAfter).to.equal(BigInt(200));
 
@@ -1605,7 +1580,7 @@ describe("skyline-program", () => {
         const vaultAta = getAssociatedTokenAddressSync(
           burnMint,
           vaultPDA,
-          true,
+          true
         );
         const vaultAtaInfo = await provider.connection.getAccountInfo(vaultAta);
         expect(vaultAtaInfo).to.equal(null);
@@ -1618,7 +1593,7 @@ describe("skyline-program", () => {
         // Verify bridge_request_count incremented
         const vsAfter = await fixture.getValidatorSet();
         expect(vsAfter.bridgeRequestCount.toNumber()).to.equal(
-          requestCountBefore + 1,
+          requestCountBefore + 1
         );
       });
 
@@ -1634,7 +1609,7 @@ describe("skyline-program", () => {
 
         const userAta = getAssociatedTokenAddressSync(
           freshBurnMint,
-          user.publicKey,
+          user.publicKey
         );
         const balanceBefore = await fixture.tokenBalances.getBalance(userAta);
         expect(balanceBefore).to.equal(BigInt(500));
@@ -1662,7 +1637,7 @@ describe("skyline-program", () => {
       it("rejects when user has insufficient balance", async () => {
         const userAta = getAssociatedTokenAddressSync(
           transferMint,
-          user.publicKey,
+          user.publicKey
         );
         const userBalance = await fixture.tokenBalances.getBalance(userAta);
 
@@ -1677,7 +1652,7 @@ describe("skyline-program", () => {
             mint: transferMint,
             signer: user,
           },
-          "InsufficientFunds",
+          "InsufficientFunds"
         );
       });
 
@@ -1690,7 +1665,7 @@ describe("skyline-program", () => {
           provider.connection,
           owner.payer,
           emptyMint,
-          user.publicKey,
+          user.publicKey
         );
 
         await fixture.bridgeRequest.expectError(
@@ -1701,7 +1676,7 @@ describe("skyline-program", () => {
             mint: emptyMint,
             signer: user,
           },
-          "InsufficientFunds",
+          "InsufficientFunds"
         );
       });
 
@@ -1712,7 +1687,7 @@ describe("skyline-program", () => {
           provider.connection,
           owner.payer,
           wrongMint,
-          user.publicKey,
+          user.publicKey
         );
 
         let thrown = false;
@@ -1729,11 +1704,11 @@ describe("skyline-program", () => {
               vaultAta: getAssociatedTokenAddressSync(
                 transferMint,
                 vaultPDA,
-                true,
+                true
               ),
               mint: transferMint,
             },
-            [user],
+            [user]
           );
         } catch (e: any) {
           thrown = true;
@@ -1746,7 +1721,7 @@ describe("skyline-program", () => {
           (msg: string) =>
             msg.includes("constraint") ||
             msg.includes("mint") ||
-            msg.includes("token"),
+            msg.includes("token")
         );
       });
 
@@ -1758,7 +1733,7 @@ describe("skyline-program", () => {
           owner.payer,
           wrongMint,
           vaultPDA,
-          true,
+          true
         );
 
         try {
@@ -1770,12 +1745,12 @@ describe("skyline-program", () => {
               signer: user.publicKey,
               signersAta: getAssociatedTokenAddressSync(
                 transferMint,
-                user.publicKey,
+                user.publicKey
               ),
               vaultAta: wrongVaultAta.address, // ATA for (vault, wrongMint)
               mint: transferMint, // But claiming transferMint
             },
-            [user],
+            [user]
           );
           expect.fail("Should have thrown InvalidVault");
         } catch (e: any) {
@@ -1793,7 +1768,7 @@ describe("skyline-program", () => {
           provider.connection,
           owner.payer,
           transferMint,
-          notVault.publicKey,
+          notVault.publicKey
         );
 
         try {
@@ -1805,12 +1780,12 @@ describe("skyline-program", () => {
               signer: user.publicKey,
               signersAta: getAssociatedTokenAddressSync(
                 transferMint,
-                user.publicKey,
+                user.publicKey
               ),
               vaultAta: wrongOwnerAta.address, // Correct mint, wrong owner
               mint: transferMint,
             },
-            [user],
+            [user]
           );
           expect.fail("Should have thrown InvalidVault");
         } catch (e: any) {
@@ -1832,12 +1807,12 @@ describe("skyline-program", () => {
               signer: user.publicKey,
               signersAta: getAssociatedTokenAddressSync(
                 transferMint,
-                user.publicKey,
+                user.publicKey
               ),
               vaultAta: randomAccount.publicKey,
               mint: transferMint,
             },
-            [user],
+            [user]
           );
           expect.fail("Should have thrown InvalidVault");
         } catch (e: any) {
@@ -1883,12 +1858,12 @@ describe("skyline-program", () => {
         await fixture.mints.mintTo(
           largeMint,
           user.publicKey,
-          Number(testAmount),
+          Number(testAmount)
         );
 
         const userAta = getAssociatedTokenAddressSync(
           largeMint,
-          user.publicKey,
+          user.publicKey
         );
         const balanceBefore = await fixture.tokenBalances.getBalance(userAta);
 
@@ -1908,7 +1883,7 @@ describe("skyline-program", () => {
         // Short address (20 bytes - Ethereum)
         const ethReceiver = Buffer.from(
           "1234567890abcdef12345678901234567890abcd",
-          "hex",
+          "hex"
         );
 
         await fixture.bridgeRequest.call({
@@ -1922,7 +1897,7 @@ describe("skyline-program", () => {
         // Long address (32 bytes - Solana-style)
         const solReceiver = Buffer.from(
           "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
-          "hex",
+          "hex"
         );
 
         await fixture.bridgeRequest.call({
@@ -1962,7 +1937,7 @@ describe("skyline-program", () => {
         // Verify all requests were counted
         const vs = await fixture.getValidatorSet();
         expect(vs.bridgeRequestCount.toNumber()).to.be.at.least(
-          chainIds.length,
+          chainIds.length
         );
       });
 
@@ -1971,7 +1946,7 @@ describe("skyline-program", () => {
         const freezableMint = await fixture.mints.createWithFreezeAuthority(
           owner.publicKey,
           freezeAuthority.publicKey,
-          9,
+          9
         );
 
         // Fund user
@@ -1979,14 +1954,14 @@ describe("skyline-program", () => {
 
         const userAta = getAssociatedTokenAddressSync(
           freezableMint,
-          user.publicKey,
+          user.publicKey
         );
 
         // Freeze user's account
         await fixture.mints.freezeTokenAccount(
           freezableMint,
           userAta,
-          freezeAuthority,
+          freezeAuthority
         );
 
         let thrown = false;
@@ -2077,7 +2052,7 @@ describe("skyline-program", () => {
         const vaultAta = getAssociatedTokenAddressSync(
           transferMint,
           vaultPDA,
-          true,
+          true
         );
         const balanceBefore = await fixture.tokenBalances.getBalance(vaultAta);
 
@@ -2112,12 +2087,23 @@ describe("skyline-program", () => {
       newValidators = Array.from({ length: 3 }, () => web3.Keypair.generate());
     });
 
+    // Helper to compare Pubkey arrays
+    const expectPubkeyArrayEqual = (
+      actual: web3.PublicKey[],
+      expected: web3.PublicKey[]
+    ) => {
+      expect(actual.length).to.equal(expected.length);
+      for (let i = 0; i < actual.length; i++) {
+        expect(actual[i].toBase58()).to.equal(expected[i].toBase58());
+      }
+    };
+
     describe("First Submission (Create Proposal)", () => {
       describe("Happy Path", () => {
         it("successfully creates VSU proposal with valid parameters", async () => {
           const batchId = await fixture.batchIds.freshBatchId();
           const added = [newValidators[0].publicKey];
-          const removed = toBNArray([]);
+          const removed: web3.PublicKey[] = [];
 
           const vsBefore = await fixture.getValidatorSet();
           const validatorCountBefore = vsBefore.signers.length;
@@ -2131,16 +2117,16 @@ describe("skyline-program", () => {
 
           // Verify proposal created
           const vscAccount = await fixture.bridgeVSU.fetchValidatorSetChange(
-            batchId,
+            batchId
           );
           expect(vscAccount).to.not.be.null;
           expect(vscAccount.added.length).to.equal(1);
           expect(vscAccount.added[0].toBase58()).to.equal(added[0].toBase58());
-          expectBNArrayEqual(vscAccount.removed, []);
+          expect(vscAccount.removed.length).to.equal(0);
           expect(vscAccount.batchId.toNumber()).to.equal(batchId);
           expect(vscAccount.signers.length).to.equal(1);
           expect(vscAccount.signers[0].toBase58()).to.equal(
-            validators[0].publicKey.toBase58(),
+            validators[0].publicKey.toBase58()
           );
 
           // Verify validator set NOT updated yet (below threshold)
@@ -2154,7 +2140,7 @@ describe("skyline-program", () => {
             newValidators[1].publicKey,
             newValidators[2].publicKey,
           ];
-          const removed = toBNArray([]);
+          const removed: web3.PublicKey[] = [];
 
           await fixture.bridgeVSU.call({
             added,
@@ -2164,16 +2150,19 @@ describe("skyline-program", () => {
           });
 
           const vscAccount = await fixture.bridgeVSU.fetchValidatorSetChange(
-            batchId,
+            batchId
           );
           expect(vscAccount.added.length).to.equal(2);
-          expectBNArrayEqual(vscAccount.removed, []);
+          expect(vscAccount.removed.length).to.equal(0);
         });
 
         it("creates proposal with removals", async () => {
           const batchId = await fixture.batchIds.freshBatchId();
+          const vs = await fixture.getValidatorSet();
+
           const added: web3.PublicKey[] = [];
-          const removed = toBNArray([0, 1]);
+          // Now we pass actual pubkeys instead of indices
+          const removed = [vs.signers[0], vs.signers[1]];
 
           await fixture.bridgeVSU.call({
             added,
@@ -2183,16 +2172,19 @@ describe("skyline-program", () => {
           });
 
           const vscAccount = await fixture.bridgeVSU.fetchValidatorSetChange(
-            batchId,
+            batchId
           );
           expect(vscAccount.added.length).to.equal(0);
-          expectBNArrayEqual(vscAccount.removed, [0, 1]);
+          expect(vscAccount.removed.length).to.equal(2);
+          expectPubkeyArrayEqual(vscAccount.removed, removed);
         });
 
         it("creates proposal with both additions and removals", async () => {
           const batchId = await fixture.batchIds.freshBatchId();
+          const vs = await fixture.getValidatorSet();
+
           const added = [newValidators[0].publicKey];
-          const removed = toBNArray([0]);
+          const removed = [vs.signers[0]]; // Remove first validator by pubkey
 
           await fixture.bridgeVSU.call({
             added,
@@ -2202,10 +2194,13 @@ describe("skyline-program", () => {
           });
 
           const vscAccount = await fixture.bridgeVSU.fetchValidatorSetChange(
-            batchId,
+            batchId
           );
           expect(vscAccount.added.length).to.equal(1);
-          expectBNArrayEqual(vscAccount.removed, [0]);
+          expect(vscAccount.removed.length).to.equal(1);
+          expect(vscAccount.removed[0].toBase58()).to.equal(
+            vs.signers[0].toBase58()
+          );
         });
       });
 
@@ -2217,7 +2212,7 @@ describe("skyline-program", () => {
           try {
             await fixture.bridgeVSU.call({
               added: [newValidators[0].publicKey],
-              removed: toBNArray([]),
+              removed: [],
               batchId: oldBatchId,
               signers: [validators[0]],
             });
@@ -2236,7 +2231,7 @@ describe("skyline-program", () => {
           try {
             await fixture.bridgeVSU.call({
               added: [existingValidator],
-              removed: toBNArray([]),
+              removed: [],
               batchId,
               signers: [validators[0]],
             });
@@ -2253,47 +2248,44 @@ describe("skyline-program", () => {
           // Try to add 11 validators - will fail at serialization/account constraint
           const tooManyVals = Array.from(
             { length: LIMITS.MAX_VALIDATORS_CHANGE + 1 },
-            () => web3.Keypair.generate().publicKey,
+            () => web3.Keypair.generate().publicKey
           );
 
           try {
             await fixture.bridgeVSU.call({
               added: tooManyVals,
-              removed: toBNArray([]),
+              removed: [],
               batchId,
               signers: [validators[0]],
             });
             expect.fail("Should have thrown account constraint error");
           } catch (err: any) {
-            // Anchor/Borsh constraint violations don't have custom error codes
-            // They throw during serialization with messages like:
-            // "invalid account data for instruction" or "failed to serialize"
             expect(err.message).to.match(
-              /invalid|serialize|constraint|max length/i,
+              /invalid|serialize|constraint|max length/i
             );
           }
         });
+
         it.skip("rejects when removing more than MAX_VALIDATORS_CHANGE (10) in one call", async () => {
           const batchId = await fixture.batchIds.freshBatchId();
 
-          // Try to remove 11 validators - will fail at serialization
+          // Generate 11 fake pubkeys for removal
           const tooManyRemovals = Array.from(
             { length: LIMITS.MAX_VALIDATORS_CHANGE + 1 },
-            (_, i) => i,
+            () => web3.Keypair.generate().publicKey
           );
 
           try {
             await fixture.bridgeVSU.call({
               added: [],
-              removed: toBNArray(tooManyRemovals),
+              removed: tooManyRemovals,
               batchId,
               signers: [validators[0]],
             });
             expect.fail("Should have thrown account constraint error");
           } catch (err: any) {
-            console.log("Caught error:", err);
             expect(err.message).to.match(
-              /invalid|serialize|constraint|max length/i,
+              /invalid|serialize|constraint|max length/i
             );
           }
         });
@@ -2302,14 +2294,15 @@ describe("skyline-program", () => {
           const batchId = await fixture.batchIds.freshBatchId();
           const vs = await fixture.getValidatorSet();
           const currentCount = vs.signers.length;
-          const toRemove = currentCount - (LIMITS.MIN_VALIDATORS - 1); // Would leave only 3 (< MIN_VALIDATORS = 4)
+          const toRemove = currentCount - (LIMITS.MIN_VALIDATORS - 1);
 
-          const removeIndexes = Array.from({ length: toRemove }, (_, i) => i);
+          // Get actual pubkeys to remove
+          const removePubkeys = vs.signers.slice(0, toRemove);
 
           try {
             await fixture.bridgeVSU.call({
               added: [],
-              removed: toBNArray(removeIndexes),
+              removed: removePubkeys,
               batchId,
               signers: [validators[0]],
             });
@@ -2320,15 +2313,14 @@ describe("skyline-program", () => {
           }
         });
 
-        it("rejects with RemovingNonExistentSigner when index out of bounds", async () => {
+        it("rejects with RemovingNonExistentSigner when pubkey not in validator set", async () => {
           const batchId = await fixture.batchIds.freshBatchId();
-          const vs = await fixture.getValidatorSet();
-          const invalidIndex = vs.signers.length;
+          const nonExistentValidator = web3.Keypair.generate().publicKey;
 
           try {
             await fixture.bridgeVSU.call({
               added: [],
-              removed: toBNArray([invalidIndex]),
+              removed: [nonExistentValidator],
               batchId,
               signers: [validators[0]],
             });
@@ -2345,7 +2337,7 @@ describe("skyline-program", () => {
           try {
             await fixture.bridgeVSU.call({
               added: [newValidators[0].publicKey],
-              removed: toBNArray([]),
+              removed: [],
               batchId,
               signers: [],
             });
@@ -2365,7 +2357,7 @@ describe("skyline-program", () => {
           try {
             await fixture.bridgeVSU.call({
               added: [newValidators[0].publicKey],
-              removed: toBNArray([]),
+              removed: [],
               batchId,
               payer: nonValidator,
               signers: [nonValidator],
@@ -2383,7 +2375,7 @@ describe("skyline-program", () => {
           try {
             await fixture.bridgeVSU.call({
               added: [newValidators[0].publicKey],
-              removed: toBNArray([]),
+              removed: [],
               batchId,
               signers: [validators[0], validators[0]],
             });
@@ -2432,18 +2424,18 @@ describe("skyline-program", () => {
             const toAdd = LIMITS.MAX_VALIDATORS_CHANGE - currentCount;
             const newVals = Array.from(
               { length: toAdd },
-              () => web3.Keypair.generate().publicKey,
+              () => web3.Keypair.generate().publicKey
             );
 
             await fixture.bridgeVSU.call({
               added: newVals,
-              removed: toBNArray([]),
+              removed: [],
               batchId,
               signers: [validators[0]],
             });
 
             const vscAccount = await fixture.bridgeVSU.fetchValidatorSetChange(
-              batchId,
+              batchId
             );
             expect(vscAccount.added.length).to.equal(toAdd);
           }
@@ -2456,38 +2448,41 @@ describe("skyline-program", () => {
 
           if (currentCount > LIMITS.MIN_VALIDATORS) {
             const toRemove = currentCount - LIMITS.MIN_VALIDATORS;
-            const removeIndexes = Array.from({ length: toRemove }, (_, i) => i);
+            // Get actual pubkeys to remove (from the end to avoid removing active signers)
+            const removePubkeys = vs.signers.slice(-toRemove);
 
             await fixture.bridgeVSU.call({
               added: [],
-              removed: toBNArray(removeIndexes),
+              removed: removePubkeys,
               batchId,
               signers: [validators[0]],
             });
 
             const vscAccount = await fixture.bridgeVSU.fetchValidatorSetChange(
-              batchId,
+              batchId
             );
-            expectBNArrayEqual(vscAccount.removed, removeIndexes);
+            expectPubkeyArrayEqual(vscAccount.removed, removePubkeys);
           }
         });
 
-        it("handles removing highest index validator", async () => {
+        it("handles removing last validator in array", async () => {
           const batchId = await fixture.batchIds.freshBatchId();
           const vs = await fixture.getValidatorSet();
-          const highestIndex = vs.signers.length - 1;
+          const lastValidator = vs.signers[vs.signers.length - 1];
 
           await fixture.bridgeVSU.call({
             added: [newValidators[0].publicKey],
-            removed: toBNArray([highestIndex]),
+            removed: [lastValidator],
             batchId,
             signers: [validators[0]],
           });
 
           const vscAccount = await fixture.bridgeVSU.fetchValidatorSetChange(
-            batchId,
+            batchId
           );
-          expectBNArrayEqual(vscAccount.removed, [highestIndex]);
+          expect(vscAccount.removed[0].toBase58()).to.equal(
+            lastValidator.toBase58()
+          );
         });
 
         it("rejects duplicate validators in added array", async () => {
@@ -2497,7 +2492,7 @@ describe("skyline-program", () => {
           try {
             await fixture.bridgeVSU.call({
               added: [duplicateVal, duplicateVal],
-              removed: toBNArray([]),
+              removed: [],
               batchId,
               signers: [validators[0]],
             });
@@ -2517,29 +2512,29 @@ describe("skyline-program", () => {
 
           await fixture.bridgeVSU.call({
             added: [newValidators[0].publicKey],
-            removed: toBNArray([]),
+            removed: [],
             batchId,
             signers: [validators[0]],
           });
 
           const vscBefore = await fixture.bridgeVSU.fetchValidatorSetChange(
-            batchId,
+            batchId
           );
           expect(vscBefore.signers.length).to.equal(1);
 
           await fixture.bridgeVSU.call({
             added: [newValidators[0].publicKey],
-            removed: toBNArray([]),
+            removed: [],
             batchId,
             signers: [validators[1]],
           });
 
           const vscAfter = await fixture.bridgeVSU.fetchValidatorSetChange(
-            batchId,
+            batchId
           );
           expect(vscAfter.signers.length).to.equal(2);
           expect(vscAfter.signers[1].toBase58()).to.equal(
-            validators[1].publicKey.toBase58(),
+            validators[1].publicKey.toBase58()
           );
         });
 
@@ -2548,20 +2543,20 @@ describe("skyline-program", () => {
 
           await fixture.bridgeVSU.call({
             added: [newValidators[0].publicKey],
-            removed: toBNArray([]),
+            removed: [],
             batchId,
             signers: [validators[0]],
           });
 
           await fixture.bridgeVSU.call({
             added: [newValidators[0].publicKey],
-            removed: toBNArray([]),
+            removed: [],
             batchId,
             signers: [validators[1], validators[2]],
           });
 
           const vscAfter = await fixture.bridgeVSU.fetchValidatorSetChange(
-            batchId,
+            batchId
           );
           expect(vscAfter.signers.length).to.equal(3);
         });
@@ -2573,7 +2568,7 @@ describe("skyline-program", () => {
 
           await fixture.bridgeVSU.call({
             added: [newValidators[0].publicKey],
-            removed: toBNArray([]),
+            removed: [],
             batchId,
             signers: [validators[0]],
           });
@@ -2581,7 +2576,7 @@ describe("skyline-program", () => {
           try {
             await fixture.bridgeVSU.call({
               added: [newValidators[0].publicKey],
-              removed: toBNArray([]),
+              removed: [],
               batchId,
               signers: [validators[0]],
             });
@@ -2597,15 +2592,15 @@ describe("skyline-program", () => {
 
           await fixture.bridgeVSU.call({
             added: [newValidators[0].publicKey],
-            removed: toBNArray([]),
+            removed: [],
             batchId,
             signers: [validators[0]],
           });
 
           try {
             await fixture.bridgeVSU.call({
-              added: [newValidators[1].publicKey],
-              removed: toBNArray([]),
+              added: [newValidators[1].publicKey], // Different!
+              removed: [],
               batchId,
               signers: [validators[1]],
             });
@@ -2616,12 +2611,13 @@ describe("skyline-program", () => {
           }
         });
 
-        it("rejects with InvalidProposalHash when removed indexes differ", async () => {
+        it("rejects with InvalidProposalHash when removed pubkeys differ", async () => {
           const batchId = await fixture.batchIds.freshBatchId();
+          const vs = await fixture.getValidatorSet();
 
           await fixture.bridgeVSU.call({
             added: [],
-            removed: toBNArray([0]),
+            removed: [vs.signers[0]],
             batchId,
             signers: [validators[0]],
           });
@@ -2629,7 +2625,7 @@ describe("skyline-program", () => {
           try {
             await fixture.bridgeVSU.call({
               added: [],
-              removed: toBNArray([1]),
+              removed: [vs.signers[1]], // Different validator!
               batchId,
               signers: [validators[1]],
             });
@@ -2656,13 +2652,10 @@ describe("skyline-program", () => {
         // Execute VSU in one transaction
         await fixture.bridgeVSU.call({
           added: [newValidator],
-          removed: toBNArray([]),
+          removed: [],
           batchId,
           signers: uniqueSigners,
         });
-
-        // Don't try to fetch VSC account - it's deleted after execution!
-        // Instead, verify the validator set was updated
 
         const updatedVs = await fixture.getValidatorSet();
 
@@ -2683,7 +2676,7 @@ describe("skyline-program", () => {
 
         const proposalParams = {
           added: [newValidator],
-          removed: toBNArray([]),
+          removed: [] as web3.PublicKey[],
         };
 
         // Step 1: First validator creates the proposal
@@ -2693,9 +2686,8 @@ describe("skyline-program", () => {
           signers: [validators[0]],
         });
 
-        // Fetch BEFORE final approval (account still exists)
         let vscAccount = await fixture.bridgeVSU.fetchValidatorSetChange(
-          batchId,
+          batchId
         );
         expect(vscAccount.signers.length).to.equal(1);
 
@@ -2707,14 +2699,9 @@ describe("skyline-program", () => {
             signers: [validators[i]],
           });
 
-          // Can still fetch here (not executed yet)
           vscAccount = await fixture.bridgeVSU.fetchValidatorSetChange(batchId);
           expect(vscAccount.signers.length).to.equal(i + 1);
         }
-
-        // Verify we're at threshold - 1
-        vscAccount = await fixture.bridgeVSU.fetchValidatorSetChange(batchId);
-        expect(vscAccount.signers.length).to.equal(threshold - 1);
 
         // Step 3: Final approval that triggers execution
         await fixture.bridgeVSU.call({
@@ -2723,77 +2710,28 @@ describe("skyline-program", () => {
           signers: [validators[threshold - 1]],
         });
 
-        // Don't fetch VSC account here - it's deleted!
-        // const vscAccount = await fixture.bridgeVSU.fetchValidatorSetChange(batchId);
-
-        // Instead, verify validator set was updated
+        // Verify validator set was updated
         const updatedVs = await fixture.getValidatorSet();
         expect(updatedVs.signers.length).to.equal(vs.signers.length + 1);
         expect(updatedVs.lastBatchId.toString()).to.equal(batchId.toString());
 
-        // Verify the new validator was added
         const newValidatorAdded = updatedVs.signers.some(
-          (signer) => signer.toBase58() === newValidator.toBase58(),
+          (signer) => signer.toBase58() === newValidator.toBase58()
         );
         expect(newValidatorAdded).to.be.true;
       });
 
-      it("executes removal of validators correctly", async () => {
+      it("executes removal of single validator correctly", async () => {
         const batchId = await fixture.batchIds.freshBatchId();
         const vs = await fixture.getValidatorSet();
         const threshold = vs.threshold;
 
-        // Remove the last validator (highest index)
-        const indexToRemove = vs.signers.length - 1;
-        const validatorToRemove = vs.signers[indexToRemove];
+        // Remove the last validator
+        const validatorToRemove = vs.signers[vs.signers.length - 1];
 
-        // Store exact parameters
         const proposalParams = {
-          added: [],
-          removed: toBNArray([indexToRemove]),
-        };
-
-        // Step 1: Create proposal with first validator
-        await fixture.bridgeVSU.call({
-          ...proposalParams,
-          batchId,
-          signers: [validators[0]],
-        });
-
-        // Step 2: Add approvals until threshold
-        for (let i = 1; i < threshold; i++) {
-          await fixture.bridgeVSU.call({
-            ...proposalParams, // Same params
-            batchId,
-            signers: [validators[i]],
-          });
-        }
-
-        // Verify execution
-        const updatedVs = await fixture.getValidatorSet();
-        expect(updatedVs.signers.length).to.equal(vs.signers.length - 1);
-        expect(updatedVs.lastBatchId.toString()).to.equal(batchId.toString());
-
-        // Verify the validator was actually removed
-        const removedValidatorStillExists = updatedVs.signers.some(
-          (signer) => signer.toBase58() === validatorToRemove.toBase58(),
-        );
-        expect(removedValidatorStillExists).to.be.false;
-      });
-
-      it("executes both additions and removals correctly", async () => {
-        const batchId = await fixture.batchIds.freshBatchId();
-        const vs = await fixture.getValidatorSet();
-        const threshold = vs.threshold;
-
-        const newValidator = web3.Keypair.generate().publicKey;
-        const indexToRemove = vs.signers.length - 1;
-        const validatorToRemove = vs.signers[indexToRemove];
-
-        // Store exact parameters
-        const proposalParams = {
-          added: [newValidator],
-          removed: toBNArray([indexToRemove]),
+          added: [] as web3.PublicKey[],
+          removed: [validatorToRemove],
         };
 
         // Step 1: Create proposal
@@ -2806,7 +2744,48 @@ describe("skyline-program", () => {
         // Step 2: Add approvals until threshold
         for (let i = 1; i < threshold; i++) {
           await fixture.bridgeVSU.call({
-            ...proposalParams, // Same params
+            ...proposalParams,
+            batchId,
+            signers: [validators[i]],
+          });
+        }
+
+        // Verify execution
+        const updatedVs = await fixture.getValidatorSet();
+        expect(updatedVs.signers.length).to.equal(vs.signers.length - 1);
+        expect(updatedVs.lastBatchId.toString()).to.equal(batchId.toString());
+
+        // Verify the validator was actually removed
+        const removedValidatorStillExists = updatedVs.signers.some(
+          (signer) => signer.toBase58() === validatorToRemove.toBase58()
+        );
+        expect(removedValidatorStillExists).to.be.false;
+      });
+
+      it("executes both additions and removals correctly", async () => {
+        const batchId = await fixture.batchIds.freshBatchId();
+        const vs = await fixture.getValidatorSet();
+        const threshold = vs.threshold;
+
+        const newValidator = web3.Keypair.generate().publicKey;
+        const validatorToRemove = vs.signers[vs.signers.length - 1];
+
+        const proposalParams = {
+          added: [newValidator],
+          removed: [validatorToRemove],
+        };
+
+        // Step 1: Create proposal
+        await fixture.bridgeVSU.call({
+          ...proposalParams,
+          batchId,
+          signers: [validators[0]],
+        });
+
+        // Step 2: Add approvals until threshold
+        for (let i = 1; i < threshold; i++) {
+          await fixture.bridgeVSU.call({
+            ...proposalParams,
             batchId,
             signers: [validators[i]],
           });
@@ -2821,15 +2800,61 @@ describe("skyline-program", () => {
 
         // Verify removal happened
         const removedValidatorStillExists = updatedVs.signers.some(
-          (signer) => signer.toBase58() === validatorToRemove.toBase58(),
+          (signer) => signer.toBase58() === validatorToRemove.toBase58()
         );
         expect(removedValidatorStillExists).to.be.false;
 
         // Verify addition happened
         const newValidatorAdded = updatedVs.signers.some(
-          (signer) => signer.toBase58() === newValidator.toBase58(),
+          (signer) => signer.toBase58() === newValidator.toBase58()
         );
         expect(newValidatorAdded).to.be.true;
+      });
+
+      it("executes removal of multiple validators in single proposal", async () => {
+        const batchId = await fixture.batchIds.freshBatchId();
+        const vs = await fixture.getValidatorSet();
+        const threshold = vs.threshold;
+
+        // Ensure we have enough validators to remove 2 and stay above MIN
+        if (vs.signers.length <= LIMITS.MIN_VALIDATORS + 1) {
+          console.log(
+            "Skipping: not enough validators to test multiple removal"
+          );
+          return;
+        }
+
+        // Remove last two validators
+        const validatorsToRemove = [
+          vs.signers[vs.signers.length - 1],
+          vs.signers[vs.signers.length - 2],
+        ];
+
+        const proposalParams = {
+          added: [] as web3.PublicKey[],
+          removed: validatorsToRemove,
+        };
+
+        // Collect enough approvals
+        for (let i = 0; i < threshold; i++) {
+          await fixture.bridgeVSU.call({
+            ...proposalParams,
+            batchId,
+            signers: [validators[i]],
+          });
+        }
+
+        // Verify execution
+        const updatedVs = await fixture.getValidatorSet();
+        expect(updatedVs.signers.length).to.equal(vs.signers.length - 2);
+
+        // Verify both validators were removed
+        for (const removed of validatorsToRemove) {
+          const stillExists = updatedVs.signers.some(
+            (s) => s.toBase58() === removed.toBase58()
+          );
+          expect(stillExists).to.be.false;
+        }
       });
     });
   });

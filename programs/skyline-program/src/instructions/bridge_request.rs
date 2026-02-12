@@ -154,14 +154,15 @@ impl<'info> BridgeRequest<'info> {
             }
 
             // Transfer tokens from user to vault
-            let cpi_accounts = Transfer {
+            let cpi_accounts = TransferChecked {
                 from: from.to_account_info(),
                 to: vault_ata.to_account_info(),
                 authority: signer.to_account_info(),
+                mint: mint.to_account_info(),
             };
 
             let cpi_context = CpiContext::new(token_program.to_account_info(), cpi_accounts);
-            token::transfer(cpi_context, amount)?;
+            transfer_checked(cpi_context, amount, mint.decimals)?;
         }
 
         // Emit bridge request event for validators to process

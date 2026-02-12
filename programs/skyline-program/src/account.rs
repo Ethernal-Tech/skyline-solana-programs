@@ -115,9 +115,9 @@ pub struct ValidatorDelta {
     /// List of new validator public keys to add (max 10 per change)
     #[max_len(MAX_VALIDATORS_CHANGE)]
     pub added: Vec<Pubkey>,
-    /// List of validator indices to remove (max 10 per change)
+    /// List of validator public keys to remove (max 10 per change)
     #[max_len(MAX_VALIDATORS_CHANGE)]
-    pub removed: Vec<u64>,
+    pub removed: Vec<Pubkey>,
     /// Bump seed for the Program Derived Address (PDA)
     pub bump: u8,
     /// The batch ID of this validator set change (must be greater than last_batch_id)
