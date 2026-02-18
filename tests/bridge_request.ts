@@ -59,8 +59,8 @@ describe("Bridge Request", () => {
       try {
         const vaultBalanceBefore = await provider.connection.getTokenAccountBalance(vaultAta);
         vaultBalanceBeforeNum = Number(vaultBalanceBefore.value.amount);
-      } catch {
-        // Vault ATA might not exist
+      } catch (e) {
+        console.log(`   Vault ATA does not exist: ${e}`);
       }
 
       console.log(`\n Balances Before:`);

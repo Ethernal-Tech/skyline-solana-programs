@@ -13,7 +13,7 @@ import {
 } from "./config";
 import { expect } from "chai";
 
-describe.only("Bridge VSU (Validator Set Update)", () => {
+describe("Bridge VSU (Validator Set Update)", () => {
   const provider = anchor.AnchorProvider.env();
   anchor.setProvider(provider);
 
