@@ -63,7 +63,6 @@ impl<'info> BridgeVSU<'info> {
             &mut ctx.accounts.validator_set_change;
         let payer = &ctx.accounts.payer;
 
-
         // Validate no duplicates in added list
         if !added.is_empty() {
             let mut added_sorted = added.clone();

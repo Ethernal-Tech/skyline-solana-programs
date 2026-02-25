@@ -19,3 +19,7 @@ pub use bridge_vsu::*;
 /// Create or approve a bridging transaction.
 pub mod bridge_transaction;
 pub use bridge_transaction::*;
+
+/// Update fee config (authority only)
+pub mod update_fee_config;
+pub use update_fee_config::*;
