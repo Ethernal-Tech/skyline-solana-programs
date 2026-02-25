@@ -94,7 +94,7 @@ impl<'info> Initialize<'info> {
         vault.bump = ctx.bumps.vault;
         // Initialize fee config values
         fee_config.min_operational_fee = min_operational_fee;
-        fee_config.relayer_fee_estimate = bridge_fee;
+        fee_config.bridge_fee = bridge_fee;
         fee_config.treasury = ctx.accounts.treasury.key();
         fee_config.authority = ctx.accounts.signer.key();
         fee_config.bump = ctx.bumps.fee_config;

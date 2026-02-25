@@ -63,28 +63,30 @@ declare_id!("CkTNcuk9EELmuR65eCfzKfz8XpDvJ27FPFHauGHVD1E9");
 pub mod skyline_program {
     use super::*;
 
-    /// Initialize the validator set and vault for the bridge system.
-    ///
-    /// This instruction sets up the initial validator set that will control all bridge operations
-    /// and creates the vault account that will hold bridged tokens. The validators must be unique
-    /// and meet the minimum/maximum requirements. The consensus threshold is automatically calculated
-    /// as 2/3 of the validator count (rounded up).
+    /// Initializes the full bridge system:
+    ///   1. ValidatorSet — validators, threshold, bump
+    ///   2. Vault        — bump
+    ///   3. FeeConfig    — operational fee, relayer fee estimate, treasury, authority
     ///
     /// # Arguments
-    /// * `ctx` - The context containing accounts for initialization
-    /// * `validators` - Vector of validator public keys (4-128 validators required)
-    /// * `last_id` - Optional initial batch ID (defaults to 0 if not provided)
+    /// * `ctx`                  - The instruction context
+    /// * `validators`           - Vector of validator public keys
+    /// * `last_id`              - Last known batch ID (for replay protection)
+    /// * `min_operational_fee`  - Minimum bridge tip sent to treasury (lamports)
+    /// * `bridge_fee`           - Estimated destination chain gas cost (lamports)
     ///
     /// # Errors
-    /// * `MaxValidatorsExceeded` - If more than 10 validators are provided
-    /// * `MinValidatorsNotMet` - If fewer than 4 validators are provided
-    /// * `ValidatorsNotUnique` - If duplicate validators are provided
+    /// * `ValidatorsNotUnique`    - Duplicate validators provided
+    /// * `MaxValidatorsExceeded`  - Too many validators
+    /// * `MinValidatorsNotMet`    - Too few validators
     pub fn initialize(
         ctx: Context<Initialize>,
         validators: Vec<Pubkey>,
         last_id: Option<u64>,
+        min_operational_fee: u64,
+        bridge_fee: u64,
     ) -> Result<()> {
-        Initialize::process_instruction(ctx, validators, last_id.unwrap_or(0))
+        Initialize::process_instruction(ctx, validators, last_id.unwrap_or(0), min_operational_fee, bridge_fee)
     }
 
     /// Create a cross-chain bridging request and transfer source tokens to vault.
@@ -107,8 +109,9 @@ pub mod skyline_program {
         amount: u64,
         receiver: Vec<u8>,
         destination_chain: u8,
+        fees: u64,
     ) -> Result<()> {
-        BridgeRequest::process_instruction(ctx, amount, receiver, destination_chain)
+        BridgeRequest::process_instruction(ctx, amount, receiver, destination_chain, fees)
     }
 
     /// Create or approve a validator set update (VSU) for the bridge.
