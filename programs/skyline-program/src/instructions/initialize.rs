@@ -1,8 +1,7 @@
-//! Initialize instruction for setting up the validator set.
+//! Initialize instruction for setting up the validator set, vault, and fee config.
 //!
-//! This module contains the logic for initializing the bridge system with an initial
-//! set of validators. The validators must meet certain requirements and will control
-//! all subsequent bridge operations.
+//! Single entry point for full bridge system initialization.
+//! Creates: ValidatorSet PDA, Vault PDA, FeeConfig PDA.
 
 use crate::*;
 
@@ -38,39 +37,35 @@ pub struct Initialize<'info> {
         bump
     )]
     pub vault: Account<'info, Vault>,
+    /// The fee config PDA — created here, one per program
+    #[account(
+        init,
+        payer = signer,
+        space = FeeConfig::INIT_SPACE + DISC as usize,
+        seeds = [FEE_CONFIG_SEED],
+        bump
+    )]
+    pub fee_config: Account<'info, FeeConfig>,
+
+    /// The treasury account that will receive operational fees
+    /// CHECK: Stored as a Pubkey reference, no ownership constraint required
+    pub treasury: UncheckedAccount<'info>,
 
     /// The system program for account creation
     pub system_program: Program<'info, System>,
 }
 
 impl<'info> Initialize<'info> {
-    /// Process the initialize instruction.
-    ///
-    /// This function validates the provided validators and initializes the validator set.
-    /// It performs several checks to ensure the validator set is secure and properly configured.
-    ///
-    /// # Arguments
-    /// * `ctx` - The instruction context containing all required accounts
-    /// * `validators` - Vector of validator public keys to initialize
-    ///
-    /// # Returns
-    /// * `Result<()>` - Returns Ok(()) on success or an error on failure
-    ///
-    /// # Errors
-    /// * `ValidatorsNotUnique` - If duplicate validators are provided
-    ///
-    /// # Security Checks
-    /// * Validates that all validators are unique (no duplicates)
-    /// * Automatically calculates the consensus threshold using the formula: num_signers - floor((num_signers - 1) / 3)
-    /// * Stores the bump seed for PDA derivation
-    /// * Initializes the vault account
     pub fn process_instruction(
         ctx: Context<Self>,
         validators: Vec<Pubkey>,
         last_id: u64,
+        min_operational_fee: u64,
+        bridge_fee: u64,
     ) -> Result<()> {
         let validator_set = &mut ctx.accounts.validator_set;
         let vault = &mut ctx.accounts.vault;
+        let fee_config = &mut ctx.accounts.fee_config;
 
         // Check for duplicate validators by sorting and deduplicating
         let mut validators_copy = validators.clone();
@@ -95,7 +90,15 @@ impl<'info> Initialize<'info> {
         validator_set.last_batch_id = last_id;
         validator_set.bridge_request_count = 0;
 
+        // Initialize the vault account with the bump seed
         vault.bump = ctx.bumps.vault;
+        // Initialize fee config values
+        fee_config.min_operational_fee = min_operational_fee;
+        fee_config.relayer_fee_estimate = bridge_fee;
+        fee_config.treasury = ctx.accounts.treasury.key();
+        fee_config.authority = ctx.accounts.signer.key();
+        fee_config.bump = ctx.bumps.fee_config;
+
         Ok(())
     }
 }
