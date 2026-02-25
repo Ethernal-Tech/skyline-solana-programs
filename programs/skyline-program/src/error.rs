@@ -159,4 +159,13 @@ pub enum CustomError {
     /// This error occurs when the number of validators being removed exceeds the number of validators that will remain after additions during a validator set update.
     #[msg("Cannot remove more validators than will exist after additions")]
     TooManyValidatorsRemoved,
+
+    #[msg("Insufficient bridge fee provided")]
+    InsufficientFee,
+
+    #[msg("Treasury account does not match fee config")]
+    InvalidTreasury,
+
+    #[msg("Unauthorized: Only the fee config authority can perform this action")]
+    Unauthorized,
 }

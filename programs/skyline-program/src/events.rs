@@ -52,4 +52,8 @@ pub struct BridgeRequestEvent {
     pub mint_token: Pubkey,
     /// The batch request ID associated with this bridge request
     pub batch_request_id: u64,
+    /// The fee amount for the relayer to process this bridge request
+    pub bridge_fee: u64,
+    /// The operational fee for the bridge to maintain its operations
+    pub operational_fee: u64,
 }

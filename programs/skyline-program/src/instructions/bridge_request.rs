@@ -6,9 +6,10 @@
 //! can process to mint/transfer equivalent tokens on the destination chain.
 
 use crate::*;
+use anchor_lang::system_program::{Transfer, transfer};
 use anchor_spl::{
-    associated_token::{create, get_associated_token_address, AssociatedToken, Create},
-    token::{self, transfer_checked, Burn, Mint, TokenAccount, TransferChecked},
+    associated_token::{AssociatedToken, Create, create, get_associated_token_address},
+    token::{self, Burn, Mint, Token, TokenAccount, TransferChecked, transfer_checked},
 };
 
 /// Account structure for the bridge_request instruction.
@@ -61,13 +62,43 @@ pub struct BridgeRequest<'info> {
     pub mint: Account<'info, Mint>,
 
     /// The token program for token operations (burn/transfer)
-    pub token_program: Program<'info, anchor_spl::token::Token>,
+    pub token_program: Program<'info, Token>,
 
     /// The system program for account creation
     pub system_program: Program<'info, System>,
 
     /// The associated token program for creating token accounts
     pub associated_token_program: Program<'info, AssociatedToken>,
+
+    /// Fee configuration PDA — read to get fee amounts & treasury
+    #[account(
+        seeds = [FEE_CONFIG_SEED],
+        bump = fee_config.bump
+    )]
+    pub fee_config: Account<'info, FeeConfig>,
+
+    /// Fee vault PDA — locks the relayer's portion until claimed.
+    /// The PDA address is derived and SOL is transferred directly via system_program::transfer.
+    /// No account data needed — it's purely a SOL escrow address.
+    ///
+    /// CHECK: This is a PDA we derive. Seeds + bump verified below.
+    #[account(
+        mut,
+        seeds = [
+            FEE_VAULT_SEED,
+            &validator_set.bridge_request_count.to_le_bytes()
+        ],
+        bump
+    )]
+    pub fee_vault: UncheckedAccount<'info>,
+
+    /// Treasury — receives operational fee immediately
+    /// CHECK: Validated against fee_config.treasury
+    #[account(
+        mut,
+        constraint = treasury.key() == fee_config.treasury @ CustomError::InvalidTreasury
+    )]
+    pub treasury: UncheckedAccount<'info>,
 }
 
 impl<'info> BridgeRequest<'info> {
@@ -106,6 +137,7 @@ impl<'info> BridgeRequest<'info> {
         amount: u64,
         receiver: Vec<u8>,
         destination_chain: u8,
+        fees: u64,
     ) -> Result<()> {
         let mint = &ctx.accounts.mint;
         let from = &ctx.accounts.signers_ata;
@@ -120,6 +152,48 @@ impl<'info> BridgeRequest<'info> {
 
         // Validate that the user has sufficient tokens to bridge
         require!(from.amount >= amount, CustomError::InsufficientFunds);
+
+         // Fee validation
+        let fee_config = &ctx.accounts.fee_config;
+        let required_fee = fee_config
+            .min_operational_fee
+            .checked_add(fee_config.bridge_fee)
+            .unwrap();
+
+        require!(fees >= required_fee, CustomError::InsufficientFee);
+
+        // Split:
+        // bridge_fee  → fee_vault (locked for relayer, fixed amount)
+        // op_fee      → treasury  (min_operational_fee + any surplus the user tipped)
+        let bridge_fee = fee_config.bridge_fee;
+
+        let op_fee = fees
+            .checked_sub(bridge_fee)
+            .unwrap(); // safe because we require fees >= required_fee which is >= bridge_fee
+
+        // bridge_fee → fee_vault (locked for relayer) 
+        transfer(
+            CpiContext::new(
+                ctx.accounts.system_program.to_account_info(),
+                Transfer {
+                    from: signer.to_account_info(),
+                    to: ctx.accounts.fee_vault.to_account_info(),
+                },
+            ),
+            bridge_fee,
+        )?;
+
+        // op_fee → treasury (min_op_fee + any excess tip)
+        transfer(
+            CpiContext::new(
+                ctx.accounts.system_program.to_account_info(),
+                Transfer {
+                    from: signer.to_account_info(),
+                    to: ctx.accounts.treasury.to_account_info(),
+                },
+            ),
+            op_fee,
+        )?;
 
         // Determine whether to burn or transfer based on vault's mint authority
         if is_vault_mint_authority(mint, &vault.to_account_info()) {
@@ -173,6 +247,8 @@ impl<'info> BridgeRequest<'info> {
             destination_chain,
             mint_token: mint.key(),
             batch_request_id: validator_set.bridge_request_count,
+            bridge_fee,
+            operational_fee: op_fee,
         });
 
         // Increment the bridge request count
