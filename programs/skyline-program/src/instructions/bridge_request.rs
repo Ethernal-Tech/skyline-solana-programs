@@ -6,10 +6,10 @@
 //! can process to mint/transfer equivalent tokens on the destination chain.
 
 use crate::*;
-use anchor_lang::system_program::{Transfer, transfer};
+use anchor_lang::system_program::{transfer, Transfer};
 use anchor_spl::{
-    associated_token::{AssociatedToken, Create, create, get_associated_token_address},
-    token::{self, Burn, Mint, Token, TokenAccount, TransferChecked, transfer_checked},
+    associated_token::{create, get_associated_token_address, AssociatedToken, Create},
+    token::{self, transfer_checked, Burn, Mint, Token, TokenAccount, TransferChecked},
 };
 
 /// Account structure for the bridge_request instruction.
@@ -77,21 +77,6 @@ pub struct BridgeRequest<'info> {
     )]
     pub fee_config: Account<'info, FeeConfig>,
 
-    /// Fee vault PDA — locks the relayer's portion until claimed.
-    /// The PDA address is derived and SOL is transferred directly via system_program::transfer.
-    /// No account data needed — it's purely a SOL escrow address.
-    ///
-    /// CHECK: This is a PDA we derive. Seeds + bump verified below.
-    #[account(
-        mut,
-        seeds = [
-            FEE_VAULT_SEED,
-            &validator_set.bridge_request_count.to_le_bytes()
-        ],
-        bump
-    )]
-    pub fee_vault: UncheckedAccount<'info>,
-
     /// Treasury — receives operational fee immediately
     /// CHECK: Validated against fee_config.treasury
     #[account(
@@ -99,6 +84,14 @@ pub struct BridgeRequest<'info> {
         constraint = treasury.key() == fee_config.treasury @ CustomError::InvalidTreasury
     )]
     pub treasury: UncheckedAccount<'info>,
+
+    /// Relayer — receives bridge_fee immediately
+    /// CHECK: Validated against fee_config.relayer
+    #[account(
+        mut,
+        constraint = relayer.key() == fee_config.relayer @ CustomError::InvalidRelayer
+    )]
+    pub relayer: UncheckedAccount<'info>,
 }
 
 impl<'info> BridgeRequest<'info> {
@@ -137,7 +130,7 @@ impl<'info> BridgeRequest<'info> {
         amount: u64,
         receiver: Vec<u8>,
         destination_chain: u8,
-        fees: u64,
+        fee: u64,
     ) -> Result<()> {
         let mint = &ctx.accounts.mint;
         let from = &ctx.accounts.signers_ata;
@@ -153,37 +146,31 @@ impl<'info> BridgeRequest<'info> {
         // Validate that the user has sufficient tokens to bridge
         require!(from.amount >= amount, CustomError::InsufficientFunds);
 
-         // Fee validation
+        // Fee validation
         let fee_config = &ctx.accounts.fee_config;
-        let required_fee = fee_config
-            .min_operational_fee
-            .checked_add(fee_config.bridge_fee)
-            .unwrap();
 
-        require!(fees >= required_fee, CustomError::InsufficientFee);
+        let required_fee = fee_config.min_operational_fee + fee_config.bridge_fee;
 
+        require!(fee >= required_fee, CustomError::InsufficientFee);
         // Split:
-        // bridge_fee  → fee_vault (locked for relayer, fixed amount)
-        // op_fee      → treasury  (min_operational_fee + any surplus the user tipped)
+        // bridge_fee → relayer  (compensates destination gas)
+        // op_fee     → treasury (min_op_fee + any user surplus tip)
         let bridge_fee = fee_config.bridge_fee;
+        let op_fee = fee - bridge_fee;
 
-        let op_fee = fees
-            .checked_sub(bridge_fee)
-            .unwrap(); // safe because we require fees >= required_fee which is >= bridge_fee
-
-        // bridge_fee → fee_vault (locked for relayer) 
+        // bridge_fee → relayer
         transfer(
             CpiContext::new(
                 ctx.accounts.system_program.to_account_info(),
                 Transfer {
                     from: signer.to_account_info(),
-                    to: ctx.accounts.fee_vault.to_account_info(),
+                    to: ctx.accounts.relayer.to_account_info(),
                 },
             ),
             bridge_fee,
         )?;
 
-        // op_fee → treasury (min_op_fee + any excess tip)
+        // op_fee → treasury
         transfer(
             CpiContext::new(
                 ctx.accounts.system_program.to_account_info(),

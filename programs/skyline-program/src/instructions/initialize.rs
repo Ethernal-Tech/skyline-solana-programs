@@ -51,6 +51,10 @@ pub struct Initialize<'info> {
     /// CHECK: Stored as a Pubkey reference, no ownership constraint required
     pub treasury: UncheckedAccount<'info>,
 
+    /// Relayer account — receives bridge fees directly
+    /// CHECK: Stored as Pubkey reference in FeeConfig
+    pub relayer: UncheckedAccount<'info>,
+
     /// The system program for account creation
     pub system_program: Program<'info, System>,
 }
@@ -93,11 +97,19 @@ impl<'info> Initialize<'info> {
         // Initialize the vault account with the bump seed
         vault.bump = ctx.bumps.vault;
         // Initialize fee config values
+
+        // Validate once here so bridge_request can safely add the two fees together without overflow checks every time
+        // If these two values overflow u64 together, reject immediately at init.
+        min_operational_fee
+            .checked_add(bridge_fee)
+            .ok_or(CustomError::FeeConfigOverflow)?;
+
         fee_config.min_operational_fee = min_operational_fee;
         fee_config.bridge_fee = bridge_fee;
         fee_config.treasury = ctx.accounts.treasury.key();
         fee_config.authority = ctx.accounts.signer.key();
         fee_config.bump = ctx.bumps.fee_config;
+        fee_config.relayer = ctx.accounts.relayer.key();
 
         Ok(())
     }

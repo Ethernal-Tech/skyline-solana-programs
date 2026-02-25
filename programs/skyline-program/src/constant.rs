@@ -70,5 +70,3 @@ pub const VALIDATOR_SET_CHANGE_SEED: &[u8] = b"validator_set_change";
 
 /// Seed string used to derive FeeConfig PDA
 pub const FEE_CONFIG_SEED: &[u8] = b"fee_config";
-/// Seed string used to derive FeeVault PDA
-pub const FEE_VAULT_SEED: &[u8] = b"fee_vault";

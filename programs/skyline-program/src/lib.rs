@@ -86,7 +86,13 @@ pub mod skyline_program {
         min_operational_fee: u64,
         bridge_fee: u64,
     ) -> Result<()> {
-        Initialize::process_instruction(ctx, validators, last_id.unwrap_or(0), min_operational_fee, bridge_fee)
+        Initialize::process_instruction(
+            ctx,
+            validators,
+            last_id.unwrap_or(0),
+            min_operational_fee,
+            bridge_fee,
+        )
     }
 
     /// Create a cross-chain bridging request and transfer source tokens to vault.

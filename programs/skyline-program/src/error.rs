@@ -168,4 +168,10 @@ pub enum CustomError {
 
     #[msg("Unauthorized: Only the fee config authority can perform this action")]
     Unauthorized,
+
+    #[msg("Relayer account does not match fee config")]
+    InvalidRelayer,
+
+    #[msg("Fee values overflow when combined — reduce min_operational_fee or bridge_fee")]
+    FeeConfigOverflow,
 }

@@ -144,10 +144,12 @@ pub struct FeeConfig {
     /// Treasury account where operational fees are sent
     pub treasury: Pubkey,
 
+    /// Relayer account — receives bridge_fee directly per bridge request
+    pub relayer: Pubkey,
+
     /// Who is allowed to update this config (bridge authority)
     pub authority: Pubkey,
 
     /// PDA bump
     pub bump: u8,
 }
-
