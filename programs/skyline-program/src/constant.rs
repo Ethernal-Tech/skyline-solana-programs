@@ -67,3 +67,8 @@ pub const MAX_VALIDATORS_CHANGE: u32 = 10;
 /// This seed is combined with the validator set change address to create a unique address for the validator set change account.
 #[constant]
 pub const VALIDATOR_SET_CHANGE_SEED: &[u8] = b"validator_set_change";
+
+/// Seed string used to derive FeeConfig PDA
+pub const FEE_CONFIG_SEED: &[u8] = b"fee_config";
+/// Seed string used to derive FeeVault PDA
+pub const FEE_VAULT_SEED: &[u8] = b"fee_vault";

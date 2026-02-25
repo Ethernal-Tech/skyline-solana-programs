@@ -128,3 +128,26 @@ pub struct ValidatorDelta {
     /// Hash of the proposal to ensure all validators approve the same change
     pub proposal_hash: [u8; 32],
 }
+
+/// Stores protocol-level fee configuration.
+/// Created once by the bridge authority via init_fee_config.
+/// Can be updated via update_fee_config.
+#[account]
+#[derive(InitSpace)]
+pub struct FeeConfig {
+    /// Minimum fee that goes to the bridge treasury (operational tip)
+    pub min_operational_fee: u64,
+
+    /// Estimated fee to refund the relayer for destination chain gas
+    pub bridge_fee: u64,
+
+    /// Treasury account where operational fees are sent
+    pub treasury: Pubkey,
+
+    /// Who is allowed to update this config (bridge authority)
+    pub authority: Pubkey,
+
+    /// PDA bump
+    pub bump: u8,
+}
+
