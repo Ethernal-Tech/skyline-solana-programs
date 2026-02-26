@@ -77,3 +77,47 @@ pub struct FeeConfigUpdatedEvent {
     pub relayer: Pubkey,
 }
 
+/// Emitted when a LockUnlock token is registered.
+/// Gateway parity: TokenRegistered event in Gateway.sol
+///
+/// LockUnlock path:
+///   mint pre-exists (e.g. USDC, WSOL)
+///   vault ATA receives/releases tokens
+///   no new SPL mint is created
+///   is_lock_unlock always true
+#[event]
+pub struct LockUnlockTokenRegisteredEvent {
+    /// Gateway-compatible uint16 identifier.
+    /// Destination chain uses this to route events.
+    pub token_id: u16,
+
+    /// The pre-existing SPL mint being registered.
+    pub mint: Pubkey,
+}
+
+/// Emitted when a MintBurn token is registered.
+/// Gateway parity: TokenRegistered event in Gateway.sol
+///
+/// MintBurn path:
+///   new SPL mint CREATED during this instruction
+///   vault PDA is set as mint_authority
+///   tokens burned on bridge_request
+///   tokens minted on bridge_transaction
+///   is_lock_unlock always false
+#[event]
+pub struct MintBurnTokenRegisteredEvent {
+    /// Gateway-compatible uint16 identifier.
+    pub token_id: u16,
+
+    /// The NEWLY CREATED SPL mint.
+    /// Client generated the keypair — this is its public key.
+    pub mint: Pubkey,
+
+    /// On-chain token name stored in Metaplex metadata.
+    pub name: String,
+
+    /// On-chain token symbol stored in Metaplex metadata.
+    pub symbol: String,
+}
+
+

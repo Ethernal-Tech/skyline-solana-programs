@@ -174,4 +174,44 @@ pub enum CustomError {
 
     #[msg("Fee values overflow when combined — reduce min_operational_fee or bridge_fee")]
     FeeConfigOverflow,
+    #[msg("Bridging amount is below the minimum threshold")]
+    BridgingAmountTooLow,
+
+    /// Fired when admin tries to register token_id == currency_token_id.
+    /// Gateway parity: CurrencyTokenId() revert in Gateway.registerToken().
+    /// The currency token (native SOL / WSOL slot) is reserved and cannot
+    /// be registered as a bridgeable SPL token.
+    #[msg("Token ID is reserved for the currency token")]
+    CurrencyTokenId,
+
+    /// Fired when TokenIdGuard PDA already exists for the given token_id.
+    /// Gateway parity: TokenIdAlreadyRegistered(_tokenId) revert.
+    /// Two mints sharing a token_id would break destination-chain routing.
+    #[msg("Token ID is already registered to another mint")]
+    TokenIdAlreadyRegistered,
+
+    /// Fired when TokenRegistry PDA already exists for the given mint.
+    /// Prevents the same mint from being registered twice under
+    /// different token_ids — which would also corrupt routing.
+    #[msg("This mint is already registered in the token registry")]
+    MintAlreadyRegistered,
+
+    /// Fired when bridge_request is called with a mint that has no
+    /// TokenRegistry PDA. Only whitelisted mints can be bridged.
+    #[msg("Mint is not registered in the token registry")]
+    TokenNotRegistered,
+
+    /// Fired when an instruction expects is_lock_unlock = true
+    /// but the TokenRegistry says false.
+    /// Guards against e.g. trying to do a vault transfer on a MintBurn token.
+    #[msg("Token is not a Lock/Unlock token")]
+    NotLockUnlock,
+
+    /// Fired when an instruction expects is_lock_unlock = false
+    /// but the TokenRegistry says true.
+    /// Guards against e.g. trying to burn a LockUnlock token.
+    #[msg("Token is not a Mint/Burn token")]
+    NotMintBurn,
+}
+
 }
