@@ -70,3 +70,9 @@ pub const VALIDATOR_SET_CHANGE_SEED: &[u8] = b"validator_set_change";
 
 /// Seed string used to derive FeeConfig PDA
 pub const FEE_CONFIG_SEED: &[u8] = b"fee_config";
+
+/// Seed string used to derive TokenRegistry PDA
+pub const TOKEN_REGISTRY_SEED: &[u8]  = b"token_registry";
+
+/// Seed string used to derive TokenIdGuard PDA
+pub const TOKEN_ID_GUARD_SEED: &[u8]  = b"token_id_guard";

@@ -156,3 +156,76 @@ pub struct FeeConfig {
     /// PDA bump
     pub bump: u8,
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TokenRegistry
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// One PDA per registered SPL mint.
+// Seeds: [TOKEN_REGISTRY_SEED, mint.key()]
+//
+// Gateway parity:
+//   token_id        ↔ uint16 _tokenId in Gateway.registerToken()
+//   mint            ↔ token contract address stored in NativeTokenPredicate
+//   is_lock_unlock  ↔ isLockUnlock flag in NativeTokenPredicate
+//
+// Two registration paths:
+//   is_lock_unlock = true  → registered via register_lock_unlock_token
+//                            mint pre-exists (e.g. USDC, WSOL)
+//                            vault ATA receives tokens on bridge_request
+//
+//   is_lock_unlock = false → registered via register_mint_burn_token
+//                            mint CREATED during registration
+//                            vault PDA is mint_authority
+//                            tokens burned on bridge_request
+//                            tokens minted on bridge_transaction
+
+#[account]
+#[derive(InitSpace)]
+pub struct TokenRegistry {
+    /// Unique token ID assigned by the bridge authority at registration.
+    pub token_id: u16,
+
+    /// The SPL mint this registry entry corresponds to.
+    /// LockUnlock: pre-existing mint passed by admin.
+    /// MintBurn:   newly created mint from register_mint_burn_token.
+    pub mint: Pubkey,
+
+    /// Determines token movement direction at bridge_request / bridge_transaction.
+    /// true  → Lock/Unlock: transfer to/from vault ATA
+    /// false → Mint/Burn:   burn from user ATA / mint to user ATA
+    /// Declared once by authority at registration — immutable thereafter.
+    pub is_lock_unlock: bool,
+
+    /// Stored to avoid recomputing in CPI calls.
+    pub bump: u8,
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TokenIdGuard
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// One PDA per registered token_id.
+// Seeds: [TOKEN_ID_GUARD_SEED, token_id.to_le_bytes()]
+//
+// Purpose: enforce on-chain uniqueness of token_id values.
+//
+// Solana has no on-chain "does any account have field X = value?" query.
+// The only way to enforce uniqueness of an arbitrary value is to embed
+// that value in a PDA seed. The PDA's existence is the uniqueness proof.
+//
+// If token_id=5 is already taken:
+//   TokenIdGuard PDA at [TOKEN_ID_GUARD_SEED, [5,0]] already exists
+//   → Anchor init constraint fails → AlreadyInUse → TX rejected
+
+#[account]
+#[derive(InitSpace)]
+pub struct TokenIdGuard {
+    /// The mint assigned to this token_id.
+    /// Stored for auditability — lets you trace token_id → mint on-chain.
+    pub mint: Pubkey,
+
+    /// Stored to avoid recomputing.
+    pub bump: u8,
+}
+
