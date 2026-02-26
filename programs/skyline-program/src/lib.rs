@@ -74,6 +74,7 @@ pub mod skyline_program {
     /// * `last_id`              - Last known batch ID (for replay protection)
     /// * `min_operational_fee`  - Minimum bridge tip sent to treasury (lamports)
     /// * `bridge_fee`           - Estimated destination chain gas cost (lamports)
+    /// * `min_bridging_amount`  - Minimum amount of tokens that can be bridged (in smallest unit, e.g. lamports for SOL)
     ///
     /// # Errors
     /// * `ValidatorsNotUnique`    - Duplicate validators provided
@@ -85,6 +86,7 @@ pub mod skyline_program {
         last_id: Option<u64>,
         min_operational_fee: u64,
         bridge_fee: u64,
+        min_bridging_amount: u64,
     ) -> Result<()> {
         Initialize::process_instruction(
             ctx,
@@ -92,6 +94,7 @@ pub mod skyline_program {
             last_id.unwrap_or(0),
             min_operational_fee,
             bridge_fee,
+            min_bridging_amount,
         )
     }
 
@@ -177,4 +180,39 @@ pub mod skyline_program {
     ) -> Result<()> {
         BridgeTransaction::process_instruction(ctx, amount, batch_id)
     }
+    /// Update the fee configuration for the bridge.
+    ///
+    /// This instruction allows the authority to update the fee configuration parameters for the bridge,
+    /// including the minimum operational fee, bridge fee, minimum bridging amount, treasury address, and
+    /// relayer address. The authority can choose to update any subset of these parameters, and the instruction
+    /// will validate the new values and emit an event with the updated configuration.
+    ///
+    /// # Arguments
+    /// * `ctx` - The context containing accounts for updating the fee configuration
+    /// * `min_operational_fee` - Optional new minimum operational fee (lamports)
+    /// * `bridge_fee` - Optional new bridge fee (lamports)     
+    /// * `min_bridging_amount` - Optional new minimum bridging amount (in smallest unit, e.g. lamports for SOL)
+    /// * `update_treasury` - Optional flag indicating whether to update the treasury address
+    /// * `update_relayer` - Optional flag indicating whether to update the relayer address
+    /// 
+    /// # Errors
+    /// * `InvalidRelayer` - If the new relayer address is invalid
+    /// * `InvalidTreasury` - If the new treasury address is invalid
+    pub fn update_fee_config(
+    ctx: Context<UpdateFeeConfig>,
+    min_operational_fee: Option<u64>,
+    bridge_fee: Option<u64>,
+    min_bridging_amount: Option<u64>,
+    update_treasury: Option<bool>,
+    update_relayer: Option<bool>,
+) -> Result<()> {
+    UpdateFeeConfig::process_instruction(
+        ctx,
+        min_operational_fee,
+        bridge_fee,
+        min_bridging_amount,
+        update_treasury,
+        update_relayer,
+    )
+}
 }

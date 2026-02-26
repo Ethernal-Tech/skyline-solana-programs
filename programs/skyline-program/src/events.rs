@@ -57,3 +57,23 @@ pub struct BridgeRequestEvent {
     /// The operational fee for the bridge to maintain its operations
     pub operational_fee: u64,
 }
+
+/// Emitted when fee config values are updated by the authority.
+#[event]
+pub struct FeeConfigUpdatedEvent {
+    /// Minimum operational fee (SOL lamports)
+    pub min_operational_fee: u64,
+
+    /// Bridge fee paid to relayer (SOL lamports)
+    pub bridge_fee: u64,
+
+    /// Minimum bridging amount
+    pub min_bridging_amount: u64,
+
+    /// Treasury address
+    pub treasury: Pubkey,
+
+    /// Relayer address
+    pub relayer: Pubkey,
+}
+

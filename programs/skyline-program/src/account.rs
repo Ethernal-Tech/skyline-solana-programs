@@ -141,6 +141,9 @@ pub struct FeeConfig {
     /// Estimated fee to refund the relayer for destination chain gas
     pub bridge_fee: u64,
 
+    /// Minimum token amount allowed per bridge request
+    pub min_bridging_amount: u64,
+
     /// Treasury account where operational fees are sent
     pub treasury: Pubkey,
 
