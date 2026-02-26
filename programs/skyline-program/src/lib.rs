@@ -224,4 +224,33 @@ pub mod skyline_program {
     ) -> Result<()> {
         RegisterLockUnlockToken::process_instruction(ctx, token_id)
     }
+
+    /// Register a new SPL mint as a MintBurn bridgeable token.
+    ///
+    /// Creates the mint, assigns vault as mint_authority, attaches Metaplex
+    /// metadata, and writes TokenRegistry + TokenIdGuard PDAs.
+    ///
+    /// Only callable by the bridge authority.
+    ///
+    /// # Arguments
+    /// * `ctx`      - Instruction context
+    /// * `token_id` - Unique gateway-compatible uint16 identifier
+    /// * `decimals` - Decimal precision of the new mint (e.g. 6 or 9)
+    /// * `name`     - Token name for Metaplex metadata
+    /// * `symbol`   - Token symbol for Metaplex metadata
+    /// * `uri`      - Metadata URI (IPFS / Arweave JSON)
+    ///
+    /// # Errors
+    /// * `CustomError::Unauthorized`    - Signer is not the bridge authority
+    /// * `CustomError::CurrencyTokenId` - token_id is reserved for native currency
+    pub fn register_mint_burn_token(
+        ctx: Context<RegisterMintBurnToken>,
+        token_id: u16,
+        decimals: u8,
+        name: String,
+        symbol: String,
+        uri: String,
+    ) -> Result<()> {
+        RegisterMintBurnToken::process_instruction(ctx, token_id, decimals, name, symbol, uri)
+    }
 }
