@@ -23,3 +23,7 @@ pub use bridge_transaction::*;
 /// Update fee config (authority only)
 pub mod update_fee_config;
 pub use update_fee_config::*;
+
+/// Register a new lock/unlock token (authority only)
+pub mod register_lock_unlock_token;
+pub use register_lock_unlock_token::*;

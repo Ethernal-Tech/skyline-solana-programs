@@ -144,6 +144,9 @@ pub struct FeeConfig {
     /// Minimum token amount allowed per bridge request
     pub min_bridging_amount: u64,
 
+    /// The token ID reserved for native SOL bridging
+    pub currency_token_id: u16,
+
     /// Treasury account where operational fees are sent
     pub treasury: Pubkey,
 
@@ -228,4 +231,3 @@ pub struct TokenIdGuard {
     /// Stored to avoid recomputing.
     pub bump: u8,
 }
-

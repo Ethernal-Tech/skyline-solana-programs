@@ -119,5 +119,3 @@ pub struct MintBurnTokenRegisteredEvent {
     /// On-chain token symbol stored in Metaplex metadata.
     pub symbol: String,
 }
-
-

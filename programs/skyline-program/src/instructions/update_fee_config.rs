@@ -27,7 +27,6 @@ pub struct UpdateFeeConfig<'info> {
     /// New relayer account — only needed when updating relayer.
     /// CHECK: Stored as Pubkey reference. Validated to be non-default below.
     pub new_relayer: UncheckedAccount<'info>,
-
 }
 
 impl<'info> UpdateFeeConfig<'info> {

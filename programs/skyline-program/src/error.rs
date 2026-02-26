@@ -166,7 +166,7 @@ pub enum CustomError {
     #[msg("Treasury account does not match fee config")]
     InvalidTreasury,
 
-    #[msg("Unauthorized: Only the fee config authority can perform this action")]
+    #[msg("Unauthorized action attempted")]
     Unauthorized,
 
     #[msg("Relayer account does not match fee config")]
@@ -212,6 +212,4 @@ pub enum CustomError {
     /// Guards against e.g. trying to burn a LockUnlock token.
     #[msg("Token is not a Mint/Burn token")]
     NotMintBurn,
-}
-
 }

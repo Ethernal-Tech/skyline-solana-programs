@@ -66,7 +66,8 @@ impl<'info> Initialize<'info> {
         last_id: u64,
         min_operational_fee: u64,
         bridge_fee: u64,
-        min_bridging_amount: u64, 
+        min_bridging_amount: u64,
+        currency_token_id: u16,
     ) -> Result<()> {
         let validator_set = &mut ctx.accounts.validator_set;
         let vault = &mut ctx.accounts.vault;
@@ -112,6 +113,7 @@ impl<'info> Initialize<'info> {
         fee_config.authority = ctx.accounts.signer.key();
         fee_config.bump = ctx.bumps.fee_config;
         fee_config.relayer = ctx.accounts.relayer.key();
+        fee_config.currency_token_id = currency_token_id;
 
         Ok(())
     }

@@ -87,6 +87,7 @@ pub mod skyline_program {
         min_operational_fee: u64,
         bridge_fee: u64,
         min_bridging_amount: u64,
+        currency_token_id: u16,
     ) -> Result<()> {
         Initialize::process_instruction(
             ctx,
@@ -95,6 +96,7 @@ pub mod skyline_program {
             min_operational_fee,
             bridge_fee,
             min_bridging_amount,
+            currency_token_id,
         )
     }
 
@@ -194,25 +196,32 @@ pub mod skyline_program {
     /// * `min_bridging_amount` - Optional new minimum bridging amount (in smallest unit, e.g. lamports for SOL)
     /// * `update_treasury` - Optional flag indicating whether to update the treasury address
     /// * `update_relayer` - Optional flag indicating whether to update the relayer address
-    /// 
+    ///
     /// # Errors
     /// * `InvalidRelayer` - If the new relayer address is invalid
     /// * `InvalidTreasury` - If the new treasury address is invalid
     pub fn update_fee_config(
-    ctx: Context<UpdateFeeConfig>,
-    min_operational_fee: Option<u64>,
-    bridge_fee: Option<u64>,
-    min_bridging_amount: Option<u64>,
-    update_treasury: Option<bool>,
-    update_relayer: Option<bool>,
-) -> Result<()> {
-    UpdateFeeConfig::process_instruction(
-        ctx,
-        min_operational_fee,
-        bridge_fee,
-        min_bridging_amount,
-        update_treasury,
-        update_relayer,
-    )
-}
+        ctx: Context<UpdateFeeConfig>,
+        min_operational_fee: Option<u64>,
+        bridge_fee: Option<u64>,
+        min_bridging_amount: Option<u64>,
+        update_treasury: Option<bool>,
+        update_relayer: Option<bool>,
+    ) -> Result<()> {
+        UpdateFeeConfig::process_instruction(
+            ctx,
+            min_operational_fee,
+            bridge_fee,
+            min_bridging_amount,
+            update_treasury,
+            update_relayer,
+        )
+    }
+
+    pub fn register_lock_unlock_token(
+        ctx: Context<RegisterLockUnlockToken>,
+        token_id: u16,
+    ) -> Result<()> {
+        RegisterLockUnlockToken::process_instruction(ctx, token_id)
+    }
 }
