@@ -139,16 +139,18 @@ impl<'info> BridgeRequest<'info> {
         let vault = &ctx.accounts.vault;
         let vault_ata = &ctx.accounts.vault_ata;
         let validator_set = &mut ctx.accounts.validator_set;
+        let fee_config = &ctx.accounts.fee_config;
 
-        // Validate amount
-        require!(amount > 0, CustomError::InvalidAmount);
+        // Validate amount is greater than minimum bridging amount
+        require!(
+            amount >= fee_config.min_bridging_amount,
+            CustomError::BridgingAmountTooLow
+        );
 
         // Validate that the user has sufficient tokens to bridge
         require!(from.amount >= amount, CustomError::InsufficientFunds);
 
-        // Fee validation
-        let fee_config = &ctx.accounts.fee_config;
-
+        // safe to add here because we validate in initialize/update_fee_config that these two values together never overflow u64
         let required_fee = fee_config.min_operational_fee + fee_config.bridge_fee;
 
         require!(fee >= required_fee, CustomError::InsufficientFee);
@@ -156,9 +158,10 @@ impl<'info> BridgeRequest<'info> {
         // bridge_fee → relayer  (compensates destination gas)
         // op_fee     → treasury (min_op_fee + any user surplus tip)
         let bridge_fee = fee_config.bridge_fee;
+        // safe to subtract here because we validated above that fee >= required_fee, which includes bridge_fee
         let op_fee = fee - bridge_fee;
 
-        // bridge_fee → relayer
+        // bridge_fee → relayer (SOL)
         transfer(
             CpiContext::new(
                 ctx.accounts.system_program.to_account_info(),
@@ -170,7 +173,7 @@ impl<'info> BridgeRequest<'info> {
             bridge_fee,
         )?;
 
-        // op_fee → treasury
+        // op_fee → treasury (SOL)
         transfer(
             CpiContext::new(
                 ctx.accounts.system_program.to_account_info(),

@@ -106,6 +106,8 @@ impl<'info> Initialize<'info> {
             .checked_add(bridge_fee)
             .ok_or(CustomError::FeeConfigOverflow)?;
 
+        require!(min_bridging_amount >= 1, CustomError::InvalidAmount);
+
         fee_config.min_operational_fee = min_operational_fee;
         fee_config.bridge_fee = bridge_fee;
         fee_config.min_bridging_amount = min_bridging_amount;
