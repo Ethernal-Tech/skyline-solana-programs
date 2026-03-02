@@ -49,7 +49,6 @@ impl<'info> UpdateFeeConfig<'info> {
         ctx: Context<UpdateFeeConfig>,
         min_operational_fee: Option<u64>,
         bridge_fee: Option<u64>,
-        min_bridging_amount: Option<u64>,
         update_treasury: Option<bool>,
         update_relayer: Option<bool>,
     ) -> Result<()> {
@@ -58,7 +57,6 @@ impl<'info> UpdateFeeConfig<'info> {
         // Resolve new fee values (keep existing if None)
         let new_op_fee = min_operational_fee.unwrap_or(fee_config.min_operational_fee);
         let new_bridge_fee = bridge_fee.unwrap_or(fee_config.bridge_fee);
-        let new_min_bridging = min_bridging_amount.unwrap_or(fee_config.min_bridging_amount);
 
         // Overflow guard
         // Validate BEFORE writing. Once stored, bridge_request can safely
@@ -89,14 +87,12 @@ impl<'info> UpdateFeeConfig<'info> {
         // Write updated values to the fee config account
         fee_config.min_operational_fee = new_op_fee;
         fee_config.bridge_fee = new_bridge_fee;
-        fee_config.min_bridging_amount = new_min_bridging;
         fee_config.treasury = new_treasury;
         fee_config.relayer = new_relayer;
 
         emit!(FeeConfigUpdatedEvent {
             min_operational_fee: new_op_fee,
             bridge_fee: new_bridge_fee,
-            min_bridging_amount: new_min_bridging,
             treasury: new_treasury,
             relayer: new_relayer,
         });

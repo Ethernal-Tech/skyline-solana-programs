@@ -32,7 +32,7 @@ pub struct RegisterMintBurnToken<'info> {
     pub authority: Signer<'info>,
 
     // ── Config ────────────────────────────────────────────────────────────────
-    /// Read-only. Validates authority and provides currency_token_id guard value.
+    /// Read-only. Validates authority
     /// PDA: [FEE_CONFIG_SEED]
     #[account(
         seeds = [FEE_CONFIG_SEED],
@@ -118,47 +118,36 @@ impl<'info> RegisterMintBurnToken<'info> {
     /// Register a brand-new SPL mint as a MintBurn bridgeable token.
     ///
     /// # What this does
-    ///   1. Validates token_id is not the reserved currency_token_id
-    ///   2. Creates SPL mint with vault as mint_authority (via Anchor init)
-    ///   3. Creates Metaplex metadata via CPI (name, symbol, uri)
-    ///   4. Creates TokenRegistry PDA  (is_lock_unlock = false)
-    ///   5. Creates TokenIdGuard PDA   (uniqueness sentinel)
-    ///   6. Emits MintBurnTokenRegisteredEvent
+    ///   1. Creates SPL mint with vault as mint_authority (via Anchor init)
+    ///   2. Creates Metaplex metadata via CPI (name, symbol, uri)
+    ///   3. Creates TokenRegistry PDA  (is_lock_unlock = false)
+    ///   4. Creates TokenIdGuard PDA   (uniqueness sentinel)
+    ///   5. Emits MintBurnTokenRegisteredEvent
     ///
     /// # Arguments
     /// * `ctx`      - Instruction context
-    /// * `token_id` - Unique gateway-compatible uint16 identifier.
-    ///                Must not equal fee_config.currency_token_id.
+    /// * `token_id` - Unique token dentifier.        
     /// * `decimals` - Decimal precision for the new SPL mint (e.g. 6 or 9).
     /// * `name`     - Token name stored in Metaplex metadata.
     /// * `symbol`   - Token symbol stored in Metaplex metadata.
-    /// * `uri`      - Metadata URI (e.g. IPFS / Arweave JSON link).
+    /// * `uri`      - Metadata URI (e.g. IPFS JSON link).
     ///
     /// # Errors
     /// * `CustomError::Unauthorized`    - Signer is not the bridge authority
-    /// * `CustomError::CurrencyTokenId` - token_id is reserved for native currency
     /// * `AlreadyInUse`                 - mint or token_id already registered
     pub fn process_instruction(
         ctx: Context<RegisterMintBurnToken>,
         token_id: u16,
         _decimals: u8, // consumed by #[instruction] constraint, not used directly
+        min_bridging_amount: u64,
         name: String,
         symbol: String,
         uri: String,
     ) -> Result<()> {
-        let fee_config = &ctx.accounts.fee_config;
         let vault = &ctx.accounts.vault;
         let mint = &ctx.accounts.mint;
         let token_registry = &mut ctx.accounts.token_registry;
         let token_id_guard = &mut ctx.accounts.token_id_guard;
-
-        // ── Guard: token_id cannot be the reserved currency token_id ─────────
-        //
-        // Gateway parity: CurrencyTokenId() revert in Gateway.registerToken()
-        require!(
-            token_id != fee_config.currency_token_id,
-            CustomError::CurrencyTokenId
-        );
 
         // ── Metaplex metadata CPI ─────────────────────────────────────────────
         //
@@ -204,10 +193,12 @@ impl<'info> RegisterMintBurnToken<'info> {
         //
         // is_lock_unlock = false is the invariant of this instruction.
         // bridge_request reads this to decide: burn (false) vs transfer (true).
+        // bridge_transaction reads this to decide: mint (false) vs unlock (true).
 
         token_registry.token_id = token_id;
         token_registry.mint = mint.key();
         token_registry.is_lock_unlock = false;
+        token_registry.min_bridging_amount = min_bridging_amount;
         token_registry.bump = ctx.bumps.token_registry;
 
         // ── Write TokenIdGuard ────────────────────────────────────────────────
@@ -223,14 +214,6 @@ impl<'info> RegisterMintBurnToken<'info> {
             name: name.clone(),
             symbol: symbol.clone(),
         });
-
-        msg!(
-            "MintBurn token registered: token_id={} mint={} name={} symbol={}",
-            token_id,
-            mint.key(),
-            name,
-            symbol,
-        );
 
         Ok(())
     }

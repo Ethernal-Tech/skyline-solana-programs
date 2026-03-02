@@ -77,6 +77,21 @@ pub struct BridgeTransaction<'info> {
 )]
     pub vault_ata: UncheckedAccount<'info>,
 
+    /// The TokenRegistry PDA for this mint.
+    ///
+    /// Determines the release mechanic for this token:
+    ///   - is_lock_unlock = false → vault mints tokens to recipient
+    ///   - is_lock_unlock = true  → vault transfers (unlocks) tokens from vault ATA to recipient
+    ///
+    /// Only tokens registered via register_lock_unlock_token or register_mint_burn_token
+    /// are permitted. Unregistered mints will fail this account constraint before any
+    /// logic runs.
+    #[account(
+        seeds = [TOKEN_REGISTRY_SEED, mint_token.key().as_ref()],
+        bump = token_registry.bump,
+    )]
+    pub token_registry: Account<'info, TokenRegistry>,
+
     /// The token program for minting operations
     pub token_program: Program<'info, Token>,
 
@@ -131,6 +146,7 @@ impl<'info> BridgeTransaction<'info> {
         let mint = &ctx.accounts.mint_token;
         let associated_token_program = &ctx.accounts.associated_token_program;
         let token_program = &ctx.accounts.token_program;
+        let token_registry = &ctx.accounts.token_registry;
 
         // Validate amount
         require!(amount > 0, CustomError::InvalidAmount);
@@ -207,7 +223,7 @@ impl<'info> BridgeTransaction<'info> {
         let seeds = &[VAULT_SEED, &[vault.bump]];
         let signer_seeds = &[&seeds[..]];
 
-        if is_vault_mint_authority(mint, &vault.to_account_info()) {
+        if !token_registry.is_lock_unlock {
             let cpi_accounts = token::MintTo {
                 mint: mint.to_account_info(),
                 to: recipient_ata.to_account_info(),

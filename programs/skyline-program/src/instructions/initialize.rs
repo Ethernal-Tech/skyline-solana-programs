@@ -66,8 +66,6 @@ impl<'info> Initialize<'info> {
         last_id: u64,
         min_operational_fee: u64,
         bridge_fee: u64,
-        min_bridging_amount: u64,
-        currency_token_id: u16,
     ) -> Result<()> {
         let validator_set = &mut ctx.accounts.validator_set;
         let vault = &mut ctx.accounts.vault;
@@ -106,16 +104,12 @@ impl<'info> Initialize<'info> {
             .checked_add(bridge_fee)
             .ok_or(CustomError::FeeConfigOverflow)?;
 
-        require!(min_bridging_amount >= 1, CustomError::InvalidAmount);
-
         fee_config.min_operational_fee = min_operational_fee;
         fee_config.bridge_fee = bridge_fee;
-        fee_config.min_bridging_amount = min_bridging_amount;
         fee_config.treasury = ctx.accounts.treasury.key();
         fee_config.authority = ctx.accounts.signer.key();
         fee_config.bump = ctx.bumps.fee_config;
         fee_config.relayer = ctx.accounts.relayer.key();
-        fee_config.currency_token_id = currency_token_id;
 
         Ok(())
     }

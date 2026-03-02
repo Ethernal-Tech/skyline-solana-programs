@@ -67,9 +67,6 @@ pub struct FeeConfigUpdatedEvent {
     /// Bridge fee paid to relayer (SOL lamports)
     pub bridge_fee: u64,
 
-    /// Minimum bridging amount
-    pub min_bridging_amount: u64,
-
     /// Treasury address
     pub treasury: Pubkey,
 
@@ -93,6 +90,10 @@ pub struct LockUnlockTokenRegisteredEvent {
 
     /// The pre-existing SPL mint being registered.
     pub mint: Pubkey,
+
+    /// Minimum raw token amount allowed per bridge_request.
+    /// Token-decimal-aware: e.g. for USDC this would be 1_000_000 (1 USDC with 6 decimals).
+    pub min_bridging_amount: u64,
 }
 
 /// Emitted when a MintBurn token is registered.

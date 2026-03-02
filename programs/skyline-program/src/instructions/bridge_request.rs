@@ -61,6 +61,20 @@ pub struct BridgeRequest<'info> {
     #[account(mut)]
     pub mint: Account<'info, Mint>,
 
+    /// The TokenRegistry PDA for this mint.
+    ///
+    /// Determines the bridge mechanic for this token:
+    ///   - is_lock_unlock = true  → transfer tokens into vault (lock)
+    ///   - is_lock_unlock = false → burn tokens from user's account
+    ///
+    /// Only tokens registered via register_lock_unlock_token or register_mint_burn_token
+    /// are permitted to be bridged. Unregistered mints will fail this account constraint.
+    #[account(
+        seeds = [TOKEN_REGISTRY_SEED, mint.key().as_ref()],
+        bump = token_registry.bump,
+    )]
+    pub token_registry: Account<'info, TokenRegistry>,
+
     /// The token program for token operations (burn/transfer)
     pub token_program: Program<'info, Token>,
 
@@ -140,10 +154,11 @@ impl<'info> BridgeRequest<'info> {
         let vault_ata = &ctx.accounts.vault_ata;
         let validator_set = &mut ctx.accounts.validator_set;
         let fee_config = &ctx.accounts.fee_config;
+        let token_registry = &ctx.accounts.token_registry;
 
         // Validate amount is greater than minimum bridging amount
         require!(
-            amount >= fee_config.min_bridging_amount,
+            amount >= token_registry.min_bridging_amount,
             CustomError::BridgingAmountTooLow
         );
 
@@ -185,8 +200,8 @@ impl<'info> BridgeRequest<'info> {
             op_fee,
         )?;
 
-        // Determine whether to burn or transfer based on vault's mint authority
-        if is_vault_mint_authority(mint, &vault.to_account_info()) {
+        // Determine whether to burn or transfer based on the token's registry type.
+        if !token_registry.is_lock_unlock {
             // Burn branch: vault is mint authority
             // Tokens are burned from user's account, no vault ATA needed
             let cpi_accounts = Burn {

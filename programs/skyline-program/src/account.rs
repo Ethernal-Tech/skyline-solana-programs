@@ -141,12 +141,6 @@ pub struct FeeConfig {
     /// Estimated fee to refund the relayer for destination chain gas
     pub bridge_fee: u64,
 
-    /// Minimum token amount allowed per bridge request
-    pub min_bridging_amount: u64,
-
-    /// The token ID reserved for native SOL bridging
-    pub currency_token_id: u16,
-
     /// Treasury account where operational fees are sent
     pub treasury: Pubkey,
 
@@ -199,6 +193,9 @@ pub struct TokenRegistry {
     /// false → Mint/Burn:   burn from user ATA / mint to user ATA
     /// Declared once by authority at registration — immutable thereafter.
     pub is_lock_unlock: bool,
+
+    /// Minimum raw token amount allowed per bridge_request.
+    pub min_bridging_amount: u64,
 
     /// Stored to avoid recomputing in CPI calls.
     pub bump: u8,

@@ -74,7 +74,6 @@ pub mod skyline_program {
     /// * `last_id`              - Last known batch ID (for replay protection)
     /// * `min_operational_fee`  - Minimum bridge tip sent to treasury (lamports)
     /// * `bridge_fee`           - Estimated destination chain gas cost (lamports)
-    /// * `min_bridging_amount`  - Minimum amount of tokens that can be bridged (in smallest unit, e.g. lamports for SOL)
     ///
     /// # Errors
     /// * `ValidatorsNotUnique`    - Duplicate validators provided
@@ -86,8 +85,6 @@ pub mod skyline_program {
         last_id: Option<u64>,
         min_operational_fee: u64,
         bridge_fee: u64,
-        min_bridging_amount: u64,
-        currency_token_id: u16,
     ) -> Result<()> {
         Initialize::process_instruction(
             ctx,
@@ -95,8 +92,6 @@ pub mod skyline_program {
             last_id.unwrap_or(0),
             min_operational_fee,
             bridge_fee,
-            min_bridging_amount,
-            currency_token_id,
         )
     }
 
@@ -193,7 +188,6 @@ pub mod skyline_program {
     /// * `ctx` - The context containing accounts for updating the fee configuration
     /// * `min_operational_fee` - Optional new minimum operational fee (lamports)
     /// * `bridge_fee` - Optional new bridge fee (lamports)     
-    /// * `min_bridging_amount` - Optional new minimum bridging amount (in smallest unit, e.g. lamports for SOL)
     /// * `update_treasury` - Optional flag indicating whether to update the treasury address
     /// * `update_relayer` - Optional flag indicating whether to update the relayer address
     ///
@@ -204,7 +198,6 @@ pub mod skyline_program {
         ctx: Context<UpdateFeeConfig>,
         min_operational_fee: Option<u64>,
         bridge_fee: Option<u64>,
-        min_bridging_amount: Option<u64>,
         update_treasury: Option<bool>,
         update_relayer: Option<bool>,
     ) -> Result<()> {
@@ -212,7 +205,6 @@ pub mod skyline_program {
             ctx,
             min_operational_fee,
             bridge_fee,
-            min_bridging_amount,
             update_treasury,
             update_relayer,
         )
@@ -221,8 +213,9 @@ pub mod skyline_program {
     pub fn register_lock_unlock_token(
         ctx: Context<RegisterLockUnlockToken>,
         token_id: u16,
+        min_bridging_amount: u64,
     ) -> Result<()> {
-        RegisterLockUnlockToken::process_instruction(ctx, token_id)
+        RegisterLockUnlockToken::process_instruction(ctx, token_id, min_bridging_amount)
     }
 
     /// Register a new SPL mint as a MintBurn bridgeable token.
@@ -236,21 +229,30 @@ pub mod skyline_program {
     /// * `ctx`      - Instruction context
     /// * `token_id` - Unique gateway-compatible uint16 identifier
     /// * `decimals` - Decimal precision of the new mint (e.g. 6 or 9)
+    /// * `min_bridging_amount` - Minimum raw token amount allowed per bridge_request
     /// * `name`     - Token name for Metaplex metadata
     /// * `symbol`   - Token symbol for Metaplex metadata
     /// * `uri`      - Metadata URI (IPFS / Arweave JSON)
     ///
     /// # Errors
     /// * `CustomError::Unauthorized`    - Signer is not the bridge authority
-    /// * `CustomError::CurrencyTokenId` - token_id is reserved for native currency
     pub fn register_mint_burn_token(
         ctx: Context<RegisterMintBurnToken>,
         token_id: u16,
         decimals: u8,
+        min_bridging_amount: u64,
         name: String,
         symbol: String,
         uri: String,
     ) -> Result<()> {
-        RegisterMintBurnToken::process_instruction(ctx, token_id, decimals, name, symbol, uri)
+        RegisterMintBurnToken::process_instruction(
+            ctx,
+            token_id,
+            decimals,
+            min_bridging_amount,
+            name,
+            symbol,
+            uri,
+        )
     }
 }

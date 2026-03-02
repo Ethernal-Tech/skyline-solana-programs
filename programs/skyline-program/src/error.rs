@@ -177,13 +177,6 @@ pub enum CustomError {
     #[msg("Bridging amount is below the minimum threshold")]
     BridgingAmountTooLow,
 
-    /// Fired when admin tries to register token_id == currency_token_id.
-    /// Gateway parity: CurrencyTokenId() revert in Gateway.registerToken().
-    /// The currency token (native SOL / WSOL slot) is reserved and cannot
-    /// be registered as a bridgeable SPL token.
-    #[msg("Token ID is reserved for the currency token")]
-    CurrencyTokenId,
-
     /// Fired when TokenIdGuard PDA already exists for the given token_id.
     /// Gateway parity: TokenIdAlreadyRegistered(_tokenId) revert.
     /// Two mints sharing a token_id would break destination-chain routing.
