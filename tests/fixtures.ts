@@ -464,6 +464,19 @@ export function assertBridgingTransactionState(
 // INSTRUCTION HELPERS - INITIALIZE
 // ============================================================================
 
+// ============================================================================
+// INSTRUCTION HELPERS - INITIALIZE
+// ============================================================================
+
+export interface InitializeParams {
+  validators: web3.PublicKey[];
+  lastId?: number | BN;
+  minOperationalFee?: number | BN;  // ← NEW (lamports, defaults to 0)
+  bridgeFee?: number | BN;          // ← NEW (lamports, defaults to 0)
+  treasury?: web3.PublicKey;        // ← NEW (defaults to owner pubkey)
+  relayer?: web3.PublicKey;         // ← NEW (defaults to owner pubkey)
+}
+
 export class InitializeHelper {
   private program: Program<SkylineProgram>;
   private owner: anchor.Wallet;
@@ -474,45 +487,69 @@ export class InitializeHelper {
   }
 
   /**
-   * Call initialize instruction
+   * Build the shared methods call for initialize instruction, with flexible params and defaults
    */
-  async call(
-    validators: web3.PublicKey[],
-    lastId: number | BN = 0
-  ): Promise<string> {
-    const lastIdBN = typeof lastId === "number" ? new BN(lastId) : lastId;
+  private buildCall(params: InitializeParams) {
+    const lastIdBN =
+      params.lastId === undefined
+        ? null // program accepts Option<u64>, null → None → defaults to 0
+        : typeof params.lastId === "number"
+        ? new BN(params.lastId)
+        : params.lastId;
 
-    return await this.program.methods
-      .initialize(validators, lastIdBN)
+    const minOpFee =
+      params.minOperationalFee === undefined
+        ? new BN(0)
+        : typeof params.minOperationalFee === "number"
+        ? new BN(params.minOperationalFee)
+        : params.minOperationalFee;
+
+    const bridgeFee =
+      params.bridgeFee === undefined
+        ? new BN(0)
+        : typeof params.bridgeFee === "number"
+        ? new BN(params.bridgeFee)
+        : params.bridgeFee;
+
+    const treasury = params.treasury ?? this.owner.publicKey;
+    const relayer = params.relayer ?? this.owner.publicKey;
+
+    return this.program.methods
+      .initialize(params.validators, lastIdBN, minOpFee, bridgeFee)
       .accounts({
         signer: this.owner.publicKey,
-      })
-      .rpc();
+        treasury,
+        relayer,
+      });
   }
 
-  /**
-   * Call initialize and expect it to fail with specific error
-   */
+  async call(
+    validators: web3.PublicKey[],
+    lastId: number | BN = 0,
+    options: Omit<InitializeParams, "validators" | "lastId"> = {}
+  ): Promise<string> {
+    return await this.buildCall({ validators, lastId, ...options }).rpc();
+  }
+
+  /** Full-params call for tests that need to set fees / treasury / relayer */
+  async callFull(params: InitializeParams): Promise<string> {
+    return await this.buildCall(params).rpc();
+  }
+
+  /** Expect a specific Anchor error code */
   async expectError(
     validators: web3.PublicKey[],
     expectedErrorCode: string,
-    lastId: number | BN = 0
+    lastId: number | BN = 0,
+    options: Omit<InitializeParams, "validators" | "lastId"> = {}
   ): Promise<void> {
-    const lastIdBN = typeof lastId === "number" ? new BN(lastId) : lastId;
-
     let thrown = false;
     try {
-      await this.program.methods
-        .initialize(validators, lastIdBN)
-        .accounts({
-          signer: this.owner.publicKey,
-        })
-        .rpc();
+      await this.buildCall({ validators, lastId, ...options }).rpc();
     } catch (e: any) {
       thrown = true;
       expect(e.error?.errorCode?.code).to.equal(expectedErrorCode);
     }
-
     if (!thrown) {
       throw new Error(
         `Expected initialize to fail with ${expectedErrorCode}, but it succeeded`
@@ -520,32 +557,24 @@ export class InitializeHelper {
     }
   }
 
-  /**
-   * Call initialize and expect it to fail (for any reason)
-   */
+  /** Expect failure for any reason */
   async expectFailure(
     validators: web3.PublicKey[],
-    lastId: number | BN = 0
+    lastId: number | BN = 0,
+    options: Omit<InitializeParams, "validators" | "lastId"> = {}
   ): Promise<void> {
-    const lastIdBN = typeof lastId === "number" ? new BN(lastId) : lastId;
-
     let thrown = false;
     try {
-      await this.program.methods
-        .initialize(validators, lastIdBN)
-        .accounts({
-          signer: this.owner.publicKey,
-        })
-        .rpc();
-    } catch (e: any) {
+      await this.buildCall({ validators, lastId, ...options }).rpc();
+    } catch {
       thrown = true;
     }
-
     if (!thrown) {
       throw new Error("Expected initialize to fail, but it succeeded");
     }
   }
 }
+
 
 // ============================================================================
 // INSTRUCTION HELPERS - BRIDGE TRANSACTION
