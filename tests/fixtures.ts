@@ -579,6 +579,109 @@ export class InitializeHelper {
 }
 
 // ============================================================================
+// INSTRUCTION HELPERS - TOKEN REGISTRY
+// ============================================================================
+
+export interface RegisterLockUnlockParams {
+  mint: web3.PublicKey;
+  tokenId: number;
+  minBridgingAmount?: number | BN; // defaults to 1
+}
+
+export interface RegisterMintBurnParams {
+  tokenId: number;
+  decimals: number;
+  minBridgingAmount?: number | BN; // defaults to 1
+  name: string;
+  symbol: string;
+  uri: string;
+}
+
+export class TokenRegistryHelper {
+  private program: Program<SkylineProgram>;
+  private owner: anchor.Wallet;
+
+  constructor(program: Program<SkylineProgram>, owner: anchor.Wallet) {
+    this.program = program;
+    this.owner = owner;
+  }
+
+  /**
+   * Register a pre-existing mint as a Lock/Unlock token.
+   * Vault receives tokens on bridge_request; vault sends tokens on bridge_transaction.
+   * is_lock_unlock = true
+   */
+  async registerLockUnlock(params: RegisterLockUnlockParams): Promise<string> {
+    const minBridgingAmount =
+      params.minBridgingAmount === undefined
+        ? new BN(1)
+        : typeof params.minBridgingAmount === "number"
+        ? new BN(params.minBridgingAmount)
+        : params.minBridgingAmount;
+
+    return await this.program.methods
+      .registerLockUnlockToken(params.tokenId, minBridgingAmount)
+      .accounts({
+        signer: this.owner.publicKey,
+        mint: params.mint
+      })
+      .rpc();
+  }
+
+  /**
+   * Register a new Mint/Burn token (program creates the mint, vault becomes mint authority).
+   * Tokens are burned on bridge_request; minted on bridge_transaction.
+   * is_lock_unlock = false
+   *
+   * Returns the new mint public key derived from the transaction.
+   */
+  async registerMintBurn(
+    params: RegisterMintBurnParams
+  ): Promise<{ signature: string; mint: web3.PublicKey }> {
+    const minBridgingAmount =
+      params.minBridgingAmount === undefined
+        ? new BN(1)
+        : typeof params.minBridgingAmount === "number"
+        ? new BN(params.minBridgingAmount)
+        : params.minBridgingAmount;
+
+    // The mint keypair must be provided as a signer because `register_mint_burn_token`
+    // calls `init` on it. Anchor resolves the mint account from the IDL accounts list;
+    // we pass a fresh Keypair so Anchor knows the address and signs the allocation.
+    const mintKeypair = web3.Keypair.generate();
+
+    const signature = await this.program.methods
+      .registerMintBurnToken(
+        params.tokenId,
+        params.decimals,
+        minBridgingAmount,
+        params.name,
+        params.symbol,
+        params.uri
+      )
+      .accounts({
+        signer: this.owner.publicKey,
+        mint: mintKeypair.publicKey
+      })
+      .signers([mintKeypair])
+      .rpc();
+
+    return { signature, mint: mintKeypair.publicKey };
+  }
+
+  /**
+   * Check if a mint is already registered
+   */
+  async isRegistered(mint: web3.PublicKey, pdas: PDAs): Promise<boolean> {
+    const pda = pdas.tokenRegistry(mint);
+    const account = await this.program.account.tokenRegistry
+      .fetchNullable(pda)
+      .catch(() => null);
+    return account !== null;
+  }
+}
+
+// ============================================================================
 // INSTRUCTION HELPERS - BRIDGE TRANSACTION
 // ============================================================================
 
