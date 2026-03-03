@@ -7,7 +7,7 @@ import {
   createMint,
   getOrCreateAssociatedTokenAccount,
   mintTo,
-  getAssociatedTokenAddressSync,
+  getAssociatedTokenAddressSync
 } from "@solana/spl-token";
 
 // ============================================================================
@@ -19,16 +19,16 @@ export const SEEDS = {
   VAULT: "vault",
   BRIDGING_TRANSACTION: "bridging_transaction",
   VALIDATOR_SET_CHANGE: "validator_set_change",
-  FEE_CONFIG: "fee_config",          
-  TOKEN_REGISTRY: "token_registry",  
-  TOKEN_ID_GUARD: "token_id_guard", 
+  FEE_CONFIG: "fee_config",
+  TOKEN_REGISTRY: "token_registry",
+  TOKEN_ID_GUARD: "token_id_guard"
 } as const;
 
 export const LIMITS = {
   MIN_VALIDATORS: 4,
   MAX_VALIDATORS: 128,
   MAX_VALIDATORS_CHANGE: 10,
-  MAX_TX_VALIDATORS: 29, // Solana transaction size limit
+  MAX_TX_VALIDATORS: 29 // Solana transaction size limit
 } as const;
 
 // ============================================================================
@@ -82,7 +82,6 @@ export interface TokenRegistryData {
   minBridgingAmount: BN;
   bump: number;
 }
-
 
 // ============================================================================
 // TEST DATA GENERATORS
@@ -215,11 +214,13 @@ export class AccountFetchers {
     return await this.program.account.bridgingTransaction.fetchNullable(pda);
   }
 
-   async getFeeConfig(pda: web3.PublicKey): Promise<FeeConfigData> {
+  async getFeeConfig(pda: web3.PublicKey): Promise<FeeConfigData> {
     return await this.program.account.feeConfig.fetch(pda);
   }
 
-  async getFeeConfigNullable(pda: web3.PublicKey): Promise<FeeConfigData | null> {
+  async getFeeConfigNullable(
+    pda: web3.PublicKey
+  ): Promise<FeeConfigData | null> {
     return await this.program.account.feeConfig.fetchNullable(pda);
   }
 
@@ -227,7 +228,9 @@ export class AccountFetchers {
     return await this.program.account.tokenRegistry.fetch(pda);
   }
 
-  async getTokenRegistryNullable(pda: web3.PublicKey): Promise<TokenRegistryData | null> {
+  async getTokenRegistryNullable(
+    pda: web3.PublicKey
+  ): Promise<TokenRegistryData | null> {
     return await this.program.account.tokenRegistry.fetchNullable(pda);
   }
 }
@@ -471,10 +474,10 @@ export function assertBridgingTransactionState(
 export interface InitializeParams {
   validators: web3.PublicKey[];
   lastId?: number | BN;
-  minOperationalFee?: number | BN;  // ← NEW (lamports, defaults to 0)
-  bridgeFee?: number | BN;          // ← NEW (lamports, defaults to 0)
-  treasury?: web3.PublicKey;        // ← NEW (defaults to owner pubkey)
-  relayer?: web3.PublicKey;         // ← NEW (defaults to owner pubkey)
+  minOperationalFee?: number | BN; // ← NEW (lamports, defaults to 0)
+  bridgeFee?: number | BN; // ← NEW (lamports, defaults to 0)
+  treasury?: web3.PublicKey; // ← NEW (defaults to owner pubkey)
+  relayer?: web3.PublicKey; // ← NEW (defaults to owner pubkey)
 }
 
 export class InitializeHelper {
@@ -519,7 +522,7 @@ export class InitializeHelper {
       .accounts({
         signer: this.owner.publicKey,
         treasury,
-        relayer,
+        relayer
       });
   }
 
@@ -575,7 +578,6 @@ export class InitializeHelper {
   }
 }
 
-
 // ============================================================================
 // INSTRUCTION HELPERS - BRIDGE TRANSACTION
 // ============================================================================
@@ -612,7 +614,7 @@ export class BridgeTransactionHelper {
     const remainingAccounts = params.validators.map((v) => ({
       pubkey: v.publicKey,
       isSigner: true,
-      isWritable: false,
+      isWritable: false
     }));
 
     return await this.program.methods
@@ -629,7 +631,7 @@ export class BridgeTransactionHelper {
           params.mint,
           params.vaultPDA,
           true
-        ),
+        )
       })
       .signers(params.validators)
       .remainingAccounts(remainingAccounts)
@@ -656,14 +658,14 @@ export class BridgeTransactionHelper {
     const remainingAccounts = validators.map((v) => ({
       pubkey: v.publicKey,
       isSigner: true,
-      isWritable: false,
+      isWritable: false
     }));
 
     return await this.program.methods
       .bridgeTransaction(amountBN, batchIdBN)
       .accounts({
         payer: this.owner.publicKey,
-        ...accounts,
+        ...accounts
       })
       .signers(validators)
       .remainingAccounts(remainingAccounts)
@@ -713,7 +715,7 @@ export class BridgeTransactionHelper {
         recipient: recipient,
         mintToken: mint,
         recipientAta: getAssociatedTokenAddressSync(mint, recipient),
-        vaultAta: getAssociatedTokenAddressSync(mint, vaultPDA, true),
+        vaultAta: getAssociatedTokenAddressSync(mint, vaultPDA, true)
       })
       .remainingAccounts([])
       .rpc();
@@ -901,7 +903,7 @@ export class BridgeRequestHelper {
         signer: signer.publicKey,
         signersAta: signerAta,
         vaultAta: vaultAta,
-        mint: params.mint,
+        mint: params.mint
       })
       .signers(signer === this.owner.payer ? [] : [signer])
       .rpc();
@@ -978,7 +980,7 @@ export class EventParser {
   // Event discriminator for BridgeRequestEvent
   // From your IDL: [162, 122, 193, 76, 126, 59, 162, 143]
   private static readonly BRIDGE_REQUEST_DISCRIMINATOR = Buffer.from([
-    162, 122, 193, 76, 126, 59, 162, 143,
+    162, 122, 193, 76, 126, 59, 162, 143
   ]);
 
   private program: Program<SkylineProgram>;
@@ -1000,7 +1002,7 @@ export class EventParser {
 
     const tx = await this.connection.getTransaction(signature, {
       commitment: "confirmed",
-      maxSupportedTransactionVersion: 0,
+      maxSupportedTransactionVersion: 0
     });
 
     if (!tx || !tx.meta || !tx.meta.logMessages) {
@@ -1078,13 +1080,13 @@ export class EventParser {
       receiver,
       destinationChain,
       mintToken,
-      batchRequestId,
+      batchRequestId
     };
   }
 
   // Event discriminator for ValidatorSetUpdatedEvent
   private static readonly VALIDATOR_SET_UPDATED_DISCRIMINATOR = Buffer.from([
-    92, 126, 111, 2, 195, 25, 244, 136,
+    92, 126, 111, 2, 195, 25, 244, 136
   ]);
 
   /**
@@ -1097,7 +1099,7 @@ export class EventParser {
 
     const tx = await this.connection.getTransaction(signature, {
       commitment: "confirmed",
-      maxSupportedTransactionVersion: 0,
+      maxSupportedTransactionVersion: 0
     });
 
     if (!tx || !tx.meta || !tx.meta.logMessages) {
@@ -1162,7 +1164,7 @@ export class EventParser {
     return {
       newSigners,
       newThreshold,
-      batchId,
+      batchId
     };
   }
 }
@@ -1199,7 +1201,7 @@ export class BridgeVSUFixture {
     return web3.PublicKey.findProgramAddressSync(
       [
         Buffer.from("validator_set_change"),
-        new BN(batchId).toArrayLike(Buffer, "le", 8),
+        new BN(batchId).toArrayLike(Buffer, "le", 8)
       ],
       this.program.programId
     );
@@ -1222,7 +1224,7 @@ export class BridgeVSUFixture {
     const remainingAccounts = signers.map((signer) => ({
       pubkey: signer.publicKey,
       isWritable: false,
-      isSigner: true,
+      isSigner: true
     }));
 
     const tx = await this.program.methods
@@ -1231,7 +1233,7 @@ export class BridgeVSUFixture {
         payer: payer.publicKey,
         validatorSet: this.validatorSetPDA,
         validatorSetChange: validatorSetChangePDA,
-        systemProgram: web3.SystemProgram.programId,
+        systemProgram: web3.SystemProgram.programId
       })
       .remainingAccounts(remainingAccounts)
       .signers([payer, ...signers])
