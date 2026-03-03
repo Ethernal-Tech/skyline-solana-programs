@@ -467,10 +467,6 @@ export function assertBridgingTransactionState(
 // INSTRUCTION HELPERS - INITIALIZE
 // ============================================================================
 
-// ============================================================================
-// INSTRUCTION HELPERS - INITIALIZE
-// ============================================================================
-
 export interface InitializeParams {
   validators: web3.PublicKey[];
   lastId?: number | BN;
@@ -692,6 +688,8 @@ export interface BridgeTransactionParams {
   mint: web3.PublicKey;
   validators: web3.Keypair[];
   vaultPDA: web3.PublicKey;
+  /** Optional — override the auto-derived tokenRegistry PDA (for error tests) */
+  tokenRegistryOverride?: web3.PublicKey;
 }
 
 export class BridgeTransactionHelper {
@@ -703,8 +701,17 @@ export class BridgeTransactionHelper {
     this.owner = owner;
   }
 
+  /** Derive the canonical token_registry PDA for a mint */
+  tokenRegistryPDA(mint: web3.PublicKey): web3.PublicKey {
+    return web3.PublicKey.findProgramAddressSync(
+      [Buffer.from(SEEDS.TOKEN_REGISTRY), mint.toBuffer()],
+      this.program.programId
+    )[0];
+  }
+
   /**
-   * Call bridgeTransaction instruction
+   * Call bridgeTransaction instruction.
+   * The mint MUST be registered before calling this.
    */
   async call(params: BridgeTransactionParams): Promise<string> {
     const amountBN =
@@ -720,6 +727,9 @@ export class BridgeTransactionHelper {
       isWritable: false
     }));
 
+    const tokenRegistry =
+      params.tokenRegistryOverride ?? this.tokenRegistryPDA(params.mint);
+
     return await this.program.methods
       .bridgeTransaction(amountBN, batchIdBN)
       .accounts({
@@ -734,7 +744,8 @@ export class BridgeTransactionHelper {
           params.mint,
           params.vaultPDA,
           true
-        )
+        ),
+        tokenRegistry
       })
       .signers(params.validators)
       .remainingAccounts(remainingAccounts)
@@ -742,7 +753,7 @@ export class BridgeTransactionHelper {
   }
 
   /**
-   * Call bridgeTransaction with custom accounts (for error testing)
+   * Call bridgeTransaction with fully custom accounts (for error testing).
    */
   async callWithCustomAccounts(
     amount: number | BN,
@@ -752,6 +763,7 @@ export class BridgeTransactionHelper {
       mintToken: web3.PublicKey;
       recipientAta: web3.PublicKey;
       vaultAta: web3.PublicKey;
+      tokenRegistry?: web3.PublicKey; // ← NEW optional override
     },
     validators: web3.Keypair[]
   ): Promise<string> {
@@ -764,20 +776,25 @@ export class BridgeTransactionHelper {
       isWritable: false
     }));
 
+    const tokenRegistry =
+      accounts.tokenRegistry ?? this.tokenRegistryPDA(accounts.mintToken);
+
     return await this.program.methods
       .bridgeTransaction(amountBN, batchIdBN)
       .accounts({
         payer: this.owner.publicKey,
-        ...accounts
+        recipient: accounts.recipient,
+        mintToken: accounts.mintToken,
+        recipientAta: accounts.recipientAta,
+        vaultAta: accounts.vaultAta,
+        tokenRegistry
       })
       .signers(validators)
       .remainingAccounts(remainingAccounts)
       .rpc();
   }
 
-  /**
-   * Call bridgeTransaction and expect it to fail with specific error
-   */
+  /** Expect a specific error code */
   async expectError(
     params: BridgeTransactionParams,
     expectedErrorCode: string
@@ -790,7 +807,6 @@ export class BridgeTransactionHelper {
       const code = e.error?.errorCode?.code ?? e.errorCode?.code;
       expect(code).to.equal(expectedErrorCode);
     }
-
     if (!thrown) {
       throw new Error(
         `Expected bridgeTransaction to fail with ${expectedErrorCode}, but it succeeded`
@@ -798,9 +814,7 @@ export class BridgeTransactionHelper {
     }
   }
 
-  /**
-   * Call bridgeTransaction with no remaining accounts (for NoSignersProvided test)
-   */
+  /** Call with no validator signers (for NoSignersProvided test) */
   async callWithNoSigners(
     amount: number | BN,
     batchId: number | BN,
@@ -815,10 +829,11 @@ export class BridgeTransactionHelper {
       .bridgeTransaction(amountBN, batchIdBN)
       .accounts({
         payer: this.owner.publicKey,
-        recipient: recipient,
+        recipient,
         mintToken: mint,
         recipientAta: getAssociatedTokenAddressSync(mint, recipient),
-        vaultAta: getAssociatedTokenAddressSync(mint, vaultPDA, true)
+        vaultAta: getAssociatedTokenAddressSync(mint, vaultPDA, true),
+        tokenRegistry: this.tokenRegistryPDA(mint)
       })
       .remainingAccounts([])
       .rpc();
