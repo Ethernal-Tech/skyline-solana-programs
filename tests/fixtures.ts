@@ -19,6 +19,9 @@ export const SEEDS = {
   VAULT: "vault",
   BRIDGING_TRANSACTION: "bridging_transaction",
   VALIDATOR_SET_CHANGE: "validator_set_change",
+  FEE_CONFIG: "fee_config",          
+  TOKEN_REGISTRY: "token_registry",  
+  TOKEN_ID_GUARD: "token_id_guard", 
 } as const;
 
 export const LIMITS = {
@@ -60,6 +63,26 @@ export interface BridgingTransactionData {
   bump: number;
   batchId: BN;
 }
+
+/** On-chain FeeConfig account shape */
+export interface FeeConfigData {
+  minOperationalFee: BN;
+  bridgeFee: BN;
+  treasury: web3.PublicKey;
+  relayer: web3.PublicKey;
+  authority: web3.PublicKey;
+  bump: number;
+}
+
+/** On-chain TokenRegistry account shape */
+export interface TokenRegistryData {
+  tokenId: number;
+  mint: web3.PublicKey;
+  isLockUnlock: boolean;
+  minBridgingAmount: BN;
+  bump: number;
+}
+
 
 // ============================================================================
 // TEST DATA GENERATORS
@@ -125,6 +148,32 @@ export class PDAs {
       this.programId
     )[0];
   }
+
+  /** FeeConfig PDA — global, one per program */
+  feeConfig(): web3.PublicKey {
+    return web3.PublicKey.findProgramAddressSync(
+      [Buffer.from(SEEDS.FEE_CONFIG)],
+      this.programId
+    )[0];
+  }
+
+  /** TokenRegistry PDA — one per registered mint */
+  tokenRegistry(mint: web3.PublicKey): web3.PublicKey {
+    return web3.PublicKey.findProgramAddressSync(
+      [Buffer.from(SEEDS.TOKEN_REGISTRY), mint.toBuffer()],
+      this.programId
+    )[0];
+  }
+
+  /** TokenIdGuard PDA — one per registered token_id */
+  tokenIdGuard(tokenId: number): web3.PublicKey {
+    const idBuf = Buffer.alloc(2);
+    idBuf.writeUInt16LE(tokenId, 0);
+    return web3.PublicKey.findProgramAddressSync(
+      [Buffer.from(SEEDS.TOKEN_ID_GUARD), idBuf],
+      this.programId
+    )[0];
+  }
 }
 
 // ============================================================================
@@ -164,6 +213,22 @@ export class AccountFetchers {
     pda: web3.PublicKey
   ): Promise<BridgingTransactionData | null> {
     return await this.program.account.bridgingTransaction.fetchNullable(pda);
+  }
+
+   async getFeeConfig(pda: web3.PublicKey): Promise<FeeConfigData> {
+    return await this.program.account.feeConfig.fetch(pda);
+  }
+
+  async getFeeConfigNullable(pda: web3.PublicKey): Promise<FeeConfigData | null> {
+    return await this.program.account.feeConfig.fetchNullable(pda);
+  }
+
+  async getTokenRegistry(pda: web3.PublicKey): Promise<TokenRegistryData> {
+    return await this.program.account.tokenRegistry.fetch(pda);
+  }
+
+  async getTokenRegistryNullable(pda: web3.PublicKey): Promise<TokenRegistryData | null> {
+    return await this.program.account.tokenRegistry.fetchNullable(pda);
   }
 }
 
