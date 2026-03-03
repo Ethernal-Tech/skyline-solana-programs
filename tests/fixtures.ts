@@ -618,7 +618,7 @@ export class TokenRegistryHelper {
     return await this.program.methods
       .registerLockUnlockToken(params.tokenId, minBridgingAmount)
       .accounts({
-        signer: this.owner.publicKey,
+        authority: this.owner.publicKey,
         mint: params.mint
       })
       .rpc();
@@ -655,8 +655,8 @@ export class TokenRegistryHelper {
         params.symbol,
         params.uri
       )
-      .accounts({
-        signer: this.owner.publicKey,
+      .accountsPartial({
+        authority: this.owner.publicKey,
         mint: mintKeypair.publicKey
       })
       .signers([mintKeypair])
@@ -732,7 +732,7 @@ export class BridgeTransactionHelper {
 
     return await this.program.methods
       .bridgeTransaction(amountBN, batchIdBN)
-      .accounts({
+      .accountsPartial({
         payer: this.owner.publicKey,
         recipient: params.recipient,
         mintToken: params.mint,
@@ -781,7 +781,7 @@ export class BridgeTransactionHelper {
 
     return await this.program.methods
       .bridgeTransaction(amountBN, batchIdBN)
-      .accounts({
+      .accountsPartial({
         payer: this.owner.publicKey,
         recipient: accounts.recipient,
         mintToken: accounts.mintToken,
@@ -827,7 +827,7 @@ export class BridgeTransactionHelper {
 
     return await this.program.methods
       .bridgeTransaction(amountBN, batchIdBN)
-      .accounts({
+      .accountsPartial({
         payer: this.owner.publicKey,
         recipient,
         mintToken: mint,
@@ -1065,7 +1065,7 @@ export class BridgeRequestHelper {
         params.destinationChain,
         feesBN // ← NEW arg
       )
-      .accounts({
+      .accountsPartial({
         signer: signer.publicKey,
         signersAta: signerAta,
         vaultAta: vaultAta,
@@ -1118,7 +1118,7 @@ export class BridgeRequestHelper {
 
     return await this.program.methods
       .bridgeRequest(amountBN, Buffer.from(receiver), destinationChain, feesBN)
-      .accounts({
+      .accountsPartial({
         signer: accounts.signer,
         signersAta: accounts.signersAta,
         vaultAta: accounts.vaultAta,

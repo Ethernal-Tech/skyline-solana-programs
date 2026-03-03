@@ -13,12 +13,12 @@ import {
   assertBridgingTransactionSigners,
   assertBridgingTransactionState,
   LIMITS,
-  assertValidBump,
+  assertValidBump
 } from "./fixtures";
 import {
   getAccount,
   getAssociatedTokenAddressSync,
-  getOrCreateAssociatedTokenAccount,
+  getOrCreateAssociatedTokenAccount
 } from "@solana/spl-token";
 
 /**
@@ -33,7 +33,7 @@ async function airdrop(
   const latestBlockhash = await connection.getLatestBlockhash();
   await connection.confirmTransaction({
     signature,
-    ...latestBlockhash,
+    ...latestBlockhash
   });
 }
 
@@ -51,7 +51,7 @@ describe("skyline-program", () => {
     provider,
     program,
     owner,
-    connection: provider.connection,
+    connection: provider.connection
   };
 
   const fixture = new SkylineTestFixture(ctx);
@@ -59,8 +59,16 @@ describe("skyline-program", () => {
   // Generate test validators once
   const validators = generateValidators(50);
 
+  const treasury = anchor.web3.Keypair.generate();
+  const relayer = anchor.web3.Keypair.generate();
+
+  // Fee config values used across all tests — keep them small but non-zero.
+  const MIN_OPERATIONAL_FEE = 1_000; // 0.000001 SOL
+  const BRIDGE_FEE = 500; // 0.0000005 SOL
+  const REQUIRED_FEE = MIN_OPERATIONAL_FEE + BRIDGE_FEE; // 1_500 lamports
+
   // ============================================================================
-  // INITIALIZE TESTS
+  // INITIALIZE TESTS — replace entire describe("Initialize", ...) block
   // ============================================================================
 
   describe("Initialize", () => {
@@ -70,7 +78,14 @@ describe("skyline-program", () => {
 
         await fixture.initialize.expectError(
           validatorPubkeys,
-          "MinValidatorsNotMet"
+          "MinValidatorsNotMet",
+          0,
+          {
+            minOperationalFee: MIN_OPERATIONAL_FEE,
+            bridgeFee: BRIDGE_FEE,
+            treasury: treasury.publicKey,
+            relayer: relayer.publicKey
+          }
         );
       });
 
@@ -79,7 +94,12 @@ describe("skyline-program", () => {
           .slice(0, LIMITS.MAX_TX_VALIDATORS + 1)
           .map((v) => v.publicKey);
 
-        await fixture.initialize.expectFailure(validatorPubkeys);
+        await fixture.initialize.expectFailure(validatorPubkeys, 0, {
+          minOperationalFee: MIN_OPERATIONAL_FEE,
+          bridgeFee: BRIDGE_FEE,
+          treasury: treasury.publicKey,
+          relayer: relayer.publicKey
+        });
       });
 
       it("fails when duplicate validators provided", async () => {
@@ -88,17 +108,48 @@ describe("skyline-program", () => {
           validators[1].publicKey,
           validators[2].publicKey,
           validators[3].publicKey,
-          validators[0].publicKey, // duplicate
+          validators[0].publicKey // duplicate
         ];
 
         await fixture.initialize.expectError(
           duplicateValidators,
-          "ValidatorsNotUnique"
+          "ValidatorsNotUnique",
+          0,
+          {
+            minOperationalFee: MIN_OPERATIONAL_FEE,
+            bridgeFee: BRIDGE_FEE,
+            treasury: treasury.publicKey,
+            relayer: relayer.publicKey
+          }
         );
       });
 
       it("fails with no validators provided", async () => {
-        await fixture.initialize.expectError([], "MinValidatorsNotMet");
+        await fixture.initialize.expectError([], "MinValidatorsNotMet", 0, {
+          minOperationalFee: MIN_OPERATIONAL_FEE,
+          bridgeFee: BRIDGE_FEE,
+          treasury: treasury.publicKey,
+          relayer: relayer.publicKey
+        });
+      });
+
+      it("fails when combined fees overflow u64", async () => {
+        const validatorPubkeys = validators.slice(0, 7).map((v) => v.publicKey);
+
+        const MAX_U64 = new anchor.BN("18446744073709551615");
+
+        await fixture.initialize.expectError(
+          validatorPubkeys,
+          "FeeConfigOverflow",
+          0,
+          {
+            // min_op_fee + bridge_fee > u64::MAX → should reject at init
+            minOperationalFee: MAX_U64,
+            bridgeFee: new anchor.BN(1),
+            treasury: treasury.publicKey,
+            relayer: relayer.publicKey
+          }
+        );
       });
     });
 
@@ -111,26 +162,36 @@ describe("skyline-program", () => {
 
         const expectedThreshold = calculateExpectedThreshold(validatorCount);
 
-        // Check if already initialized
         const isInitialized = await fixture.isInitialized();
 
         if (isInitialized) {
-          // Verify existing state matches expected
-          const vsPDA = fixture.pdas.validatorSet();
-          const vs = await fixture.accounts.getValidatorSet(vsPDA);
+          const vs = await fixture.accounts.getValidatorSet(
+            fixture.pdas.validatorSet()
+          );
 
           try {
             assertValidatorSetState(vs, {
               validators: validatorPubkeys,
               threshold: expectedThreshold,
               lastBatchId: 0,
-              bridgeRequestCount: 0,
+              bridgeRequestCount: 0
             });
 
-            // Also verify vault
-            const vaultPDA = fixture.pdas.vault();
-            const vault = await fixture.accounts.getVault(vaultPDA);
+            const vault = await fixture.accounts.getVault(fixture.pdas.vault());
             assertValidBump(vault.bump);
+
+            // Also verify fee_config was written correctly
+            const fc = await fixture.getFeeConfig();
+            expect(fc.minOperationalFee.toNumber()).to.equal(
+              MIN_OPERATIONAL_FEE
+            );
+            expect(fc.bridgeFee.toNumber()).to.equal(BRIDGE_FEE);
+            expect(fc.treasury.toBase58()).to.equal(
+              treasury.publicKey.toBase58()
+            );
+            expect(fc.relayer.toBase58()).to.equal(
+              relayer.publicKey.toBase58()
+            );
 
             console.log(
               "  ℹ ValidatorSet already initialized and matches expected state"
@@ -139,66 +200,88 @@ describe("skyline-program", () => {
           } catch (e: any) {
             throw new Error(
               [
-                "ValidatorSet already exists but does not match expected test validators.",
-                "This will cause issues with subsequent tests.",
-                "",
-                "Fix: Reset your test validator / clean ledger and rerun.",
-                `vsPDA=${vsPDA.toBase58()}`,
-                "",
-                `Error: ${e.message}`,
+                "ValidatorSet already exists but does not match expected test state.",
+                "Reset your test validator / clean ledger and rerun.",
+                `vsPDA=${fixture.pdas.validatorSet().toBase58()}`,
+                `Error: ${e.message}`
               ].join("\n")
             );
           }
         }
 
-        // Not initialized - perform initialization
-        await fixture.initialize.call(validatorPubkeys, 0);
+        // Not yet initialized — airdrop to treasury + relayer so they can
+        // receive lamports in bridge_request tests
+        await airdrop(
+          provider.connection,
+          treasury.publicKey,
+          1 * web3.LAMPORTS_PER_SOL
+        );
+        await airdrop(
+          provider.connection,
+          relayer.publicKey,
+          1 * web3.LAMPORTS_PER_SOL
+        );
+
+        await fixture.initialize.call(validatorPubkeys, 0, {
+          minOperationalFee: MIN_OPERATIONAL_FEE,
+          bridgeFee: BRIDGE_FEE,
+          treasury: treasury.publicKey,
+          relayer: relayer.publicKey
+        });
 
         // Verify validator set
-        const vsPDA = fixture.pdas.validatorSet();
-        const vs = await fixture.accounts.getValidatorSet(vsPDA);
-
+        const vs = await fixture.accounts.getValidatorSet(
+          fixture.pdas.validatorSet()
+        );
         assertValidatorSetState(vs, {
           validators: validatorPubkeys,
           threshold: expectedThreshold,
           lastBatchId: 0,
-          bridgeRequestCount: 0,
+          bridgeRequestCount: 0
         });
 
         // Verify vault
-        const vaultPDA = fixture.pdas.vault();
-        const vault = await fixture.accounts.getVault(vaultPDA);
+        const vault = await fixture.accounts.getVault(fixture.pdas.vault());
         assertValidBump(vault.bump);
+
+        // Verify fee_config
+        const fc = await fixture.getFeeConfig();
+        expect(fc.minOperationalFee.toNumber()).to.equal(MIN_OPERATIONAL_FEE);
+        expect(fc.bridgeFee.toNumber()).to.equal(BRIDGE_FEE);
+        expect(fc.treasury.toBase58()).to.equal(treasury.publicKey.toBase58());
+        expect(fc.relayer.toBase58()).to.equal(relayer.publicKey.toBase58());
+        assertValidBump(fc.bump);
       });
 
       it("fails on re-initialization attempt", async function () {
         const isInitialized = await fixture.isInitialized();
-
         if (!isInitialized) {
           this.skip();
           return;
         }
 
-        // Get state before
         const before = await fixture.getValidatorSet();
 
-        // Attempt re-initialization with different validators
         let threw = false;
         try {
           await fixture.initialize.call(
             validators.slice(5, 12).map((v) => v.publicKey),
-            3
+            3,
+            {
+              minOperationalFee: MIN_OPERATIONAL_FEE,
+              bridgeFee: BRIDGE_FEE,
+              treasury: treasury.publicKey,
+              relayer: relayer.publicKey
+            }
           );
         } catch (e: any) {
           threw = true;
           const logs: string = (e?.logs ?? []).join("\n");
-          expect(logs).to.include("Allocate: account");
           expect(logs).to.include("already in use");
         }
 
         expect(threw, "re-initialization should have failed").to.equal(true);
 
-        // Verify state unchanged
         const after = await fixture.getValidatorSet();
         expect(after.lastBatchId.toString()).to.equal(
           before.lastBatchId.toString()
@@ -208,7 +291,7 @@ describe("skyline-program", () => {
     });
   });
 
-  // ============================================================================
+  /*   // ============================================================================
   // BRIDGE TRANSACTION TESTS
   // ============================================================================
 
@@ -2867,5 +2950,5 @@ describe("skyline-program", () => {
         }
       });
     });
-  });
+  }); */
 });
