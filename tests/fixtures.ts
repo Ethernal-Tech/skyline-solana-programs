@@ -1165,7 +1165,7 @@ export interface BridgeRequestEventData {
   destinationChain: number;
   mintToken: web3.PublicKey;
   batchRequestId: BN;
-  bridgeFee: BN; 
+  bridgeFee: BN;
   operationalFee: BN;
 }
 
@@ -1279,7 +1279,6 @@ export class EventParser {
     offset += 8;
     // Field 8: operational_fee (u64 - 8 bytes, little-endian)
     const operationalFee = new BN(data.slice(offset, offset + 8), "le");
-    
 
     return {
       sender,
@@ -1488,6 +1487,7 @@ export class SkylineTestFixture {
   public tokenBalances: TokenBalanceHelper;
   public events: EventParser;
   public bridgeVSU: BridgeVSUFixture;
+  public tokenRegistry: TokenRegistryHelper;
 
   constructor(ctx: TestContext) {
     this.pdas = new PDAs(ctx.program.programId);
@@ -1506,37 +1506,48 @@ export class SkylineTestFixture {
     this.batchIds = new BatchIdManager(this.accounts, this.pdas.validatorSet());
     this.tokenBalances = new TokenBalanceHelper(ctx.connection);
     this.events = new EventParser(ctx.program, ctx.connection);
-
     this.bridgeVSU = new BridgeVSUFixture(
       ctx.program,
       ctx.connection,
       this.pdas.validatorSet(),
       ctx.owner.payer
     );
+    this.tokenRegistry = new TokenRegistryHelper(ctx.program, ctx.owner);
   }
 
-  /**
-   * Check if validator set is already initialized
-   */
+  /** Check if validator set is already initialized */
   async isInitialized(): Promise<boolean> {
-    const vsPDA = this.pdas.validatorSet();
-    const vs = await this.accounts.getValidatorSetNullable(vsPDA);
+    const vs = await this.accounts.getValidatorSetNullable(
+      this.pdas.validatorSet()
+    );
     return vs !== null;
   }
 
-  /**
-   * Get current validator set or throw if not initialized
-   */
+  /** Get current validator set or throw if not initialized */
   async getValidatorSet(): Promise<ValidatorSetData> {
-    const vsPDA = this.pdas.validatorSet();
-    return await this.accounts.getValidatorSet(vsPDA);
+    return await this.accounts.getValidatorSet(this.pdas.validatorSet());
   }
 
-  /**
-   * Get next batch ID
-   */
+  /** Get next batch ID from on-chain state */
   async nextBatchId(): Promise<number> {
     const vs = await this.getValidatorSet();
     return vs.lastBatchId.toNumber() + 1;
+  }
+
+  /**
+   * Fetch on-chain fee_config.
+   * Useful in tests that need to read treasury/relayer/fee values.
+   */
+  async getFeeConfig(): Promise<FeeConfigData> {
+    return await this.accounts.getFeeConfig(this.pdas.feeConfig());
+  }
+
+  /**
+   * Compute the minimum fee required by the current fee_config.
+   * Convenience so tests don't have to re-derive this manually.
+   */
+  async requiredFee(): Promise<BN> {
+    const fc = await this.getFeeConfig();
+    return fc.minOperationalFee.add(fc.bridgeFee);
   }
 }
