@@ -967,7 +967,7 @@ export class MintHelper {
 }
 
 // ============================================================================
-// BRIDGE REQUEST HELPERS
+// BRIDGE REQUEST TYPES
 // ============================================================================
 
 export interface BridgeRequestParams {
@@ -975,8 +975,17 @@ export interface BridgeRequestParams {
   receiver: Buffer | Uint8Array;
   destinationChain: number;
   mint: web3.PublicKey;
+  fees: number | BN; // ← NEW: total SOL fee in lamports
   signer?: web3.Keypair; // Optional, defaults to owner
+  /** Override treasury (default: from fee_config) */
+  treasuryOverride?: web3.PublicKey;
+  /** Override relayer (default: from fee_config) */
+  relayerOverride?: web3.PublicKey;
 }
+
+// ============================================================================
+// BRIDGE REQUEST HELPER
+// ============================================================================
 
 export class BridgeRequestHelper {
   private program: Program<SkylineProgram>;
@@ -993,12 +1002,48 @@ export class BridgeRequestHelper {
     this.vaultPDA = vaultPDA;
   }
 
+  /** Derive the canonical fee_config PDA */
+  feeConfigPDA(): web3.PublicKey {
+    return web3.PublicKey.findProgramAddressSync(
+      [Buffer.from(SEEDS.FEE_CONFIG)],
+      this.program.programId
+    )[0];
+  }
+
+  /** Derive the canonical token_registry PDA for a mint */
+  tokenRegistryPDA(mint: web3.PublicKey): web3.PublicKey {
+    return web3.PublicKey.findProgramAddressSync(
+      [Buffer.from(SEEDS.TOKEN_REGISTRY), mint.toBuffer()],
+      this.program.programId
+    )[0];
+  }
+
   /**
-   * Call bridgeRequest instruction
+   * Resolve treasury + relayer from the on-chain fee_config.
+   * Called lazily when not overridden.
+   */
+  private async resolveFeeAccounts(): Promise<{
+    treasury: web3.PublicKey;
+    relayer: web3.PublicKey;
+  }> {
+    const feeConfig = await this.program.account.feeConfig.fetch(
+      this.feeConfigPDA()
+    );
+    return {
+      treasury: feeConfig.treasury,
+      relayer: feeConfig.relayer
+    };
+  }
+
+  /**
+   * Call bridgeRequest instruction.
+   * Treasury and relayer are resolved automatically from fee_config unless overridden.
    */
   async call(params: BridgeRequestParams): Promise<string> {
     const amountBN =
       typeof params.amount === "number" ? new BN(params.amount) : params.amount;
+    const feesBN =
+      typeof params.fees === "number" ? new BN(params.fees) : params.fees;
     const signer = params.signer ?? this.owner.payer;
 
     const signerAta = getAssociatedTokenAddressSync(
@@ -1011,24 +1056,31 @@ export class BridgeRequestHelper {
       true
     );
 
+    const { treasury, relayer } = await this.resolveFeeAccounts();
+
     return await this.program.methods
       .bridgeRequest(
         amountBN,
         Buffer.from(params.receiver),
-        params.destinationChain
+        params.destinationChain,
+        feesBN // ← NEW arg
       )
       .accounts({
         signer: signer.publicKey,
         signersAta: signerAta,
         vaultAta: vaultAta,
-        mint: params.mint
+        mint: params.mint,
+        tokenRegistry: this.tokenRegistryPDA(params.mint),
+        feeConfig: this.feeConfigPDA(),
+        treasury: params.treasuryOverride ?? treasury,
+        relayer: params.relayerOverride ?? relayer
       })
       .signers(signer === this.owner.payer ? [] : [signer])
       .rpc();
   }
 
   /**
-   * Call with custom accounts (for error testing)
+   * Call with fully custom accounts (for error testing).
    */
   async callWithCustomAccounts(
     amount: number | BN,
@@ -1039,21 +1091,49 @@ export class BridgeRequestHelper {
       signersAta: web3.PublicKey;
       vaultAta: web3.PublicKey;
       mint: web3.PublicKey;
+      fees?: number | BN;
+      tokenRegistry?: web3.PublicKey;
+      feeConfig?: web3.PublicKey;
+      treasury?: web3.PublicKey;
+      relayer?: web3.PublicKey;
     },
     signers: web3.Keypair[]
   ): Promise<string> {
     const amountBN = typeof amount === "number" ? new BN(amount) : amount;
+    const feesBN =
+      accounts.fees === undefined
+        ? new BN(0)
+        : typeof accounts.fees === "number"
+        ? new BN(accounts.fees)
+        : accounts.fees;
+
+    // Resolve defaults from fee_config when not overridden
+    let treasury = accounts.treasury;
+    let relayer = accounts.relayer;
+    if (!treasury || !relayer) {
+      const resolved = await this.resolveFeeAccounts();
+      treasury = treasury ?? resolved.treasury;
+      relayer = relayer ?? resolved.relayer;
+    }
 
     return await this.program.methods
-      .bridgeRequest(amountBN, Buffer.from(receiver), destinationChain)
-      .accounts(accounts)
+      .bridgeRequest(amountBN, Buffer.from(receiver), destinationChain, feesBN)
+      .accounts({
+        signer: accounts.signer,
+        signersAta: accounts.signersAta,
+        vaultAta: accounts.vaultAta,
+        mint: accounts.mint,
+        tokenRegistry:
+          accounts.tokenRegistry ?? this.tokenRegistryPDA(accounts.mint),
+        feeConfig: accounts.feeConfig ?? this.feeConfigPDA(),
+        treasury,
+        relayer
+      })
       .signers(signers)
       .rpc();
   }
 
-  /**
-   * Call and expect specific error
-   */
+  /** Call and expect a specific error code */
   async expectError(
     params: BridgeRequestParams,
     expectedErrorCode: string
@@ -1066,7 +1146,6 @@ export class BridgeRequestHelper {
       const code = e.error?.errorCode?.code ?? e.errorCode?.code;
       expect(code).to.equal(expectedErrorCode);
     }
-
     if (!thrown) {
       throw new Error(
         `Expected bridgeRequest to fail with ${expectedErrorCode}, but it succeeded`
@@ -1086,6 +1165,8 @@ export interface BridgeRequestEventData {
   destinationChain: number;
   mintToken: web3.PublicKey;
   batchRequestId: BN;
+  bridgeFee: BN; 
+  operationalFee: BN;
 }
 
 export interface ValidatorSetUpdatedEventData {
@@ -1191,6 +1272,14 @@ export class EventParser {
 
     // Field 6: batch_request_id (u64 - 8 bytes, little-endian)
     const batchRequestId = new BN(data.slice(offset, offset + 8), "le");
+    offset += 8;
+
+    // Field 7: bridge_fee (u64 - 8 bytes, little-endian)
+    const bridgeFee = new BN(data.slice(offset, offset + 8), "le");
+    offset += 8;
+    // Field 8: operational_fee (u64 - 8 bytes, little-endian)
+    const operationalFee = new BN(data.slice(offset, offset + 8), "le");
+    
 
     return {
       sender,
@@ -1198,7 +1287,9 @@ export class EventParser {
       receiver,
       destinationChain,
       mintToken,
-      batchRequestId
+      batchRequestId,
+      bridgeFee,
+      operationalFee
     };
   }
 
