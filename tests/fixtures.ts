@@ -202,17 +202,6 @@ export class AccountFetchers {
   async getVaultNullable(pda: web3.PublicKey): Promise<VaultData | null> {
     return await this.program.account.vault.fetchNullable(pda);
   }
-  async getBridgingTransaction(
-    pda: web3.PublicKey
-  ): Promise<BridgingTransactionData> {
-    return await this.program.account.bridgingTransaction.fetch(pda);
-  }
-
-  async getBridgingTransactionNullable(
-    pda: web3.PublicKey
-  ): Promise<BridgingTransactionData | null> {
-    return await this.program.account.bridgingTransaction.fetchNullable(pda);
-  }
 
   async getFeeConfig(pda: web3.PublicKey): Promise<FeeConfigData> {
     return await this.program.account.feeConfig.fetch(pda);
@@ -369,55 +358,6 @@ export function assertValidatorSetState(
 export function assertValidBump(bump: number) {
   expect(bump, "bump should be >= 0").to.be.at.least(0);
   expect(bump, "bump should be <= 255").to.be.at.most(255);
-}
-
-/**
- * Assert bridging transaction does not exist
- */
-export async function assertNoBridgingTransaction(
-  accounts: AccountFetchers,
-  batchId: number | BN
-): Promise<void> {
-  const pda = new PDAs(accounts["program"].programId).bridgingTransaction(
-    batchId
-  );
-  const bt = await accounts.getBridgingTransactionNullable(pda);
-  expect(
-    bt,
-    `expected no bridging transaction for batchId=${batchId}`
-  ).to.equal(null);
-}
-
-/**
- * Assert bridging transaction exists with expected signers
- */
-export async function assertBridgingTransactionSigners(
-  accounts: AccountFetchers,
-  programId: web3.PublicKey,
-  batchId: number | BN,
-  expectedSigners: web3.PublicKey[]
-): Promise<void> {
-  const pda = new PDAs(programId).bridgingTransaction(batchId);
-  const bt = await accounts.getBridgingTransactionNullable(pda);
-
-  expect(
-    bt,
-    `expected pending bridging transaction for batchId=${batchId}`
-  ).to.not.equal(null);
-
-  const actualSigners = bt!.signers.map((pk) => pk.toBase58());
-  const actualSet = new Set(actualSigners);
-
-  expect(actualSet.size, "signers should be unique").to.equal(
-    expectedSigners.length
-  );
-
-  for (const pk of expectedSigners) {
-    expect(
-      actualSet.has(pk.toBase58()),
-      `expected signer ${pk.toBase58()} to be in approval list`
-    ).to.equal(true);
-  }
 }
 
 /**
@@ -678,18 +618,35 @@ export class TokenRegistryHelper {
 }
 
 // ============================================================================
-// INSTRUCTION HELPERS - BRIDGE TRANSACTION
+// INSTRUCTION HELPERS - BRIDGE TRANSACTION (new multi-transfer API)
 // ============================================================================
 
-export interface BridgeTransactionParams {
-  amount: number | BN;
-  batchId: number | BN;
+/** Mirrors the on-chain TransferItem struct */
+export interface TransferItem {
   recipient: web3.PublicKey;
-  mint: web3.PublicKey;
+  mintIndex: number;  // u8 — index into the mints array
+  amount: BN;
+}
+
+export interface BridgeTransactionParams {
+  transfers: TransferItem[];
+  mints: web3.PublicKey[];
+  batchId: number | BN;
   validators: web3.Keypair[];
   vaultPDA: web3.PublicKey;
-  /** Optional — override the auto-derived tokenRegistry PDA (for error tests) */
-  tokenRegistryOverride?: web3.PublicKey;
+}
+
+/**
+ * All the AccountMeta arrays that make up remaining_accounts.
+ * Exposed so individual tests can corrupt a specific section.
+ */
+export interface BridgeTxRemainingAccounts {
+  validatorMetas: { pubkey: web3.PublicKey; isSigner: boolean; isWritable: boolean }[];
+  mintMetas:      { pubkey: web3.PublicKey; isSigner: boolean; isWritable: boolean }[];
+  walletMetas:    { pubkey: web3.PublicKey; isSigner: boolean; isWritable: boolean }[];
+  registryMetas:  { pubkey: web3.PublicKey; isSigner: boolean; isWritable: boolean }[];
+  recipientAtaMetas: { pubkey: web3.PublicKey; isSigner: boolean; isWritable: boolean }[];
+  vaultAtaMetas:  { pubkey: web3.PublicKey; isSigner: boolean; isWritable: boolean }[];
 }
 
 export class BridgeTransactionHelper {
@@ -710,42 +667,118 @@ export class BridgeTransactionHelper {
   }
 
   /**
-   * Call bridgeTransaction instruction.
-   * The mint MUST be registered before calling this.
+   * Build the six remaining_accounts sections from params.
+   * This is the canonical correct layout — tests that need to
+   * corrupt a section can call this, mutate one section, then
+   * call sendWithSections() directly.
+   */
+  buildSections(
+    params: BridgeTransactionParams
+  ): BridgeTxRemainingAccounts {
+    const { transfers, mints, validators, vaultPDA } = params;
+
+    // Section 1 — validator signers (isSigner = true)
+    const validatorMetas = validators.map((v) => ({
+      pubkey: v.publicKey,
+      isSigner: true,
+      isWritable: false,
+    }));
+
+    // Section 2 — mint accounts (read-only, parallel to mints[])
+    const mintMetas = mints.map((m) => ({
+      pubkey: m,
+      isSigner: false,
+      isWritable: false,
+    }));
+
+    // Section 3 — recipient wallets (one per transfer, read-only)
+    const walletMetas = transfers.map((t) => ({
+      pubkey: t.recipient,
+      isSigner: false,
+      isWritable: false,
+    }));
+
+    // Section 4 — token registry PDAs (one per mint, read-only)
+    const registryMetas = mints.map((m) => ({
+      pubkey: this.tokenRegistryPDA(m),
+      isSigner: false,
+      isWritable: false,
+    }));
+
+    // Section 5 — recipient ATAs (one per transfer, writable)
+    const recipientAtaMetas = transfers.map((t) => ({
+      pubkey: getAssociatedTokenAddressSync(
+        mints[t.mintIndex],
+        t.recipient
+      ),
+      isSigner: false,
+      isWritable: true,
+    }));
+
+    // Section 6 — vault ATAs (one per unique mint, writable)
+    const vaultAtaMetas = mints.map((m) => ({
+      pubkey: getAssociatedTokenAddressSync(m, vaultPDA, true),
+      isSigner: false,
+      isWritable: true,
+    }));
+
+    return {
+      validatorMetas,
+      mintMetas,
+      walletMetas,
+      registryMetas,
+      recipientAtaMetas,
+      vaultAtaMetas,
+    };
+  }
+
+  /** Flatten sections into a single remaining_accounts array in order */
+  private flattenSections(sections: BridgeTxRemainingAccounts) {
+    return [
+      ...sections.validatorMetas,
+      ...sections.mintMetas,
+      ...sections.walletMetas,
+      ...sections.registryMetas,
+      ...sections.recipientAtaMetas,
+      ...sections.vaultAtaMetas,
+    ];
+  }
+
+  /**
+   * Serialize transfers for the instruction — matches on-chain TransferItem layout.
+   * { recipient: Pubkey, mint_index: u8, amount: u64 }
+   */
+  private serializeTransfers(transfers: TransferItem[]) {
+    // Anchor will serialize these via AnchorSerialize — we pass plain objects
+    // matching the IDL struct shape. Field names must be camelCase as the IDL
+    // generates them from the snake_case Rust fields.
+    return transfers.map((t) => ({
+      recipient: t.recipient,
+      mintIndex: t.mintIndex,
+      amount: t.amount,
+    }));
+  }
+
+  /**
+   * Call the new bridge_transaction instruction with the correct layout.
    */
   async call(params: BridgeTransactionParams): Promise<string> {
-    const amountBN =
-      typeof params.amount === "number" ? new BN(params.amount) : params.amount;
     const batchIdBN =
       typeof params.batchId === "number"
         ? new BN(params.batchId)
         : params.batchId;
 
-    const remainingAccounts = params.validators.map((v) => ({
-      pubkey: v.publicKey,
-      isSigner: true,
-      isWritable: false
-    }));
-
-    const tokenRegistry =
-      params.tokenRegistryOverride ?? this.tokenRegistryPDA(params.mint);
+    const sections = this.buildSections(params);
+    const remainingAccounts = this.flattenSections(sections);
 
     return await this.program.methods
-      .bridgeTransaction(amountBN, batchIdBN)
-      .accountsPartial({
+      .bridgeTransaction(
+        this.serializeTransfers(params.transfers),
+        params.mints,
+        batchIdBN
+      )
+      .accounts({
         payer: this.owner.publicKey,
-        recipient: params.recipient,
-        mintToken: params.mint,
-        recipientAta: getAssociatedTokenAddressSync(
-          params.mint,
-          params.recipient
-        ),
-        vaultAta: getAssociatedTokenAddressSync(
-          params.mint,
-          params.vaultPDA,
-          true
-        ),
-        tokenRegistry
       })
       .signers(params.validators)
       .remainingAccounts(remainingAccounts)
@@ -753,48 +786,34 @@ export class BridgeTransactionHelper {
   }
 
   /**
-   * Call bridgeTransaction with fully custom accounts (for error testing).
+   * Call with manually constructed sections — used by error tests that
+   * need to corrupt one specific section without rebuilding everything.
    */
-  async callWithCustomAccounts(
-    amount: number | BN,
+  async callWithSections(
+    transfers: TransferItem[],
+    mints: web3.PublicKey[],
     batchId: number | BN,
-    accounts: {
-      recipient: web3.PublicKey;
-      mintToken: web3.PublicKey;
-      recipientAta: web3.PublicKey;
-      vaultAta: web3.PublicKey;
-      tokenRegistry?: web3.PublicKey; // ← NEW optional override
-    },
-    validators: web3.Keypair[]
+    validators: web3.Keypair[],
+    sections: BridgeTxRemainingAccounts
   ): Promise<string> {
-    const amountBN = typeof amount === "number" ? new BN(amount) : amount;
-    const batchIdBN = typeof batchId === "number" ? new BN(batchId) : batchId;
+    const batchIdBN =
+      typeof batchId === "number" ? new BN(batchId) : batchId;
 
-    const remainingAccounts = validators.map((v) => ({
-      pubkey: v.publicKey,
-      isSigner: true,
-      isWritable: false
-    }));
-
-    const tokenRegistry =
-      accounts.tokenRegistry ?? this.tokenRegistryPDA(accounts.mintToken);
+    const remainingAccounts = this.flattenSections(sections);
 
     return await this.program.methods
-      .bridgeTransaction(amountBN, batchIdBN)
-      .accountsPartial({
-        payer: this.owner.publicKey,
-        recipient: accounts.recipient,
-        mintToken: accounts.mintToken,
-        recipientAta: accounts.recipientAta,
-        vaultAta: accounts.vaultAta,
-        tokenRegistry
-      })
+      .bridgeTransaction(
+        this.serializeTransfers(transfers),
+        mints,
+        batchIdBN
+      )
+      .accounts({ payer: this.owner.publicKey })
       .signers(validators)
       .remainingAccounts(remainingAccounts)
       .rpc();
   }
 
-  /** Expect a specific error code */
+  /** Expect a specific Anchor error code */
   async expectError(
     params: BridgeTransactionParams,
     expectedErrorCode: string
@@ -805,7 +824,9 @@ export class BridgeTransactionHelper {
     } catch (e: any) {
       thrown = true;
       const code = e.error?.errorCode?.code ?? e.errorCode?.code;
-      expect(code).to.equal(expectedErrorCode);
+      expect(code, `expected error ${expectedErrorCode}`).to.equal(
+        expectedErrorCode
+      );
     }
     if (!thrown) {
       throw new Error(
@@ -814,29 +835,30 @@ export class BridgeTransactionHelper {
     }
   }
 
-  /** Call with no validator signers (for NoSignersProvided test) */
-  async callWithNoSigners(
-    amount: number | BN,
+  /** Expect a specific error code when using custom sections */
+  async expectErrorWithSections(
+    transfers: TransferItem[],
+    mints: web3.PublicKey[],
     batchId: number | BN,
-    recipient: web3.PublicKey,
-    mint: web3.PublicKey,
-    vaultPDA: web3.PublicKey
-  ): Promise<string> {
-    const amountBN = typeof amount === "number" ? new BN(amount) : amount;
-    const batchIdBN = typeof batchId === "number" ? new BN(batchId) : batchId;
-
-    return await this.program.methods
-      .bridgeTransaction(amountBN, batchIdBN)
-      .accountsPartial({
-        payer: this.owner.publicKey,
-        recipient,
-        mintToken: mint,
-        recipientAta: getAssociatedTokenAddressSync(mint, recipient),
-        vaultAta: getAssociatedTokenAddressSync(mint, vaultPDA, true),
-        tokenRegistry: this.tokenRegistryPDA(mint)
-      })
-      .remainingAccounts([])
-      .rpc();
+    validators: web3.Keypair[],
+    sections: BridgeTxRemainingAccounts,
+    expectedErrorCode: string
+  ): Promise<void> {
+    let thrown = false;
+    try {
+      await this.callWithSections(transfers, mints, batchId, validators, sections);
+    } catch (e: any) {
+      thrown = true;
+      const code = e.error?.errorCode?.code ?? e.errorCode?.code;
+      expect(code, `expected error ${expectedErrorCode}`).to.equal(
+        expectedErrorCode
+      );
+    }
+    if (!thrown) {
+      throw new Error(
+        `Expected bridgeTransaction to fail with ${expectedErrorCode}, but it succeeded`
+      );
+    }
   }
 }
 
@@ -1378,101 +1400,6 @@ export class EventParser {
 }
 
 // ============================================================================
-// VALIDATOR SET UPDATE HELPERS
-// ============================================================================
-
-/**
- * Fixture for validator set update operations
- */
-export class BridgeVSUFixture {
-  private program: Program<SkylineProgram>;
-  private connection: web3.Connection;
-  private validatorSetPDA: web3.PublicKey;
-  private defaultPayer: web3.Keypair;
-
-  constructor(
-    program: Program<SkylineProgram>,
-    connection: web3.Connection,
-    validatorSetPDA: web3.PublicKey,
-    defaultPayer: web3.Keypair
-  ) {
-    this.program = program;
-    this.connection = connection;
-    this.validatorSetPDA = validatorSetPDA;
-    this.defaultPayer = defaultPayer;
-  }
-
-  /**
-   * Get the ValidatorSetChange PDA for a given batch_id
-   */
-  getValidatorSetChangePDA(batchId: number): [web3.PublicKey, number] {
-    return web3.PublicKey.findProgramAddressSync(
-      [
-        Buffer.from("validator_set_change"),
-        new BN(batchId).toArrayLike(Buffer, "le", 8)
-      ],
-      this.program.programId
-    );
-  }
-
-  /**
-   * Call bridge_vsu instruction
-   */
-  async call(params: {
-    added: web3.PublicKey[];
-    removed: web3.PublicKey[];
-    batchId: number;
-    payer?: web3.Keypair;
-    signers: web3.Keypair[];
-  }): Promise<string> {
-    const { added, removed, batchId, signers } = params;
-    const payer = params.payer || this.defaultPayer;
-    const [validatorSetChangePDA] = this.getValidatorSetChangePDA(batchId);
-
-    const remainingAccounts = signers.map((signer) => ({
-      pubkey: signer.publicKey,
-      isWritable: false,
-      isSigner: true
-    }));
-
-    const tx = await this.program.methods
-      .bridgeVsu(added, removed, new BN(batchId))
-      .accountsPartial({
-        payer: payer.publicKey,
-        validatorSet: this.validatorSetPDA,
-        validatorSetChange: validatorSetChangePDA,
-        systemProgram: web3.SystemProgram.programId
-      })
-      .remainingAccounts(remainingAccounts)
-      .signers([payer, ...signers])
-      .rpc();
-
-    return tx;
-  }
-
-  /**
-   * Fetch ValidatorSetChange account
-   */
-  async fetchValidatorSetChange(batchId: number): Promise<any | null> {
-    try {
-      const [pda] = this.getValidatorSetChangePDA(batchId);
-      const account = await this.program.account.validatorDelta.fetch(pda);
-      return account;
-    } catch {
-      return null;
-    }
-  }
-
-  /**
-   * Check if ValidatorSetChange account exists
-   */
-  async validatorSetChangeExists(batchId: number): Promise<boolean> {
-    const account = await this.fetchValidatorSetChange(batchId);
-    return account !== null;
-  }
-}
-
-// ============================================================================
 // MAIN TEST FIXTURE CLASS
 // ============================================================================
 
@@ -1486,7 +1413,7 @@ export class SkylineTestFixture {
   public batchIds: BatchIdManager;
   public tokenBalances: TokenBalanceHelper;
   public events: EventParser;
-  public bridgeVSU: BridgeVSUFixture;
+  //public bridgeVSU: BridgeVSUFixture;
   public tokenRegistry: TokenRegistryHelper;
 
   constructor(ctx: TestContext) {
@@ -1506,12 +1433,6 @@ export class SkylineTestFixture {
     this.batchIds = new BatchIdManager(this.accounts, this.pdas.validatorSet());
     this.tokenBalances = new TokenBalanceHelper(ctx.connection);
     this.events = new EventParser(ctx.program, ctx.connection);
-    this.bridgeVSU = new BridgeVSUFixture(
-      ctx.program,
-      ctx.connection,
-      this.pdas.validatorSet(),
-      ctx.owner.payer
-    );
     this.tokenRegistry = new TokenRegistryHelper(ctx.program, ctx.owner);
   }
 
