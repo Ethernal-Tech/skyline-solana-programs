@@ -83,12 +83,6 @@ pub enum CustomError {
     #[msg("No signers provided")]
     NoSignersProvided,
 
-    /// Signer already approved.
-    ///
-    /// This error occurs when a signer is already approved.
-    #[msg("Signer already approved")]
-    SignerAlreadyApproved,
-
     /// Invalid proposal hash.
     ///
     /// This error occurs when the proposal hash is not valid.
@@ -112,12 +106,6 @@ pub enum CustomError {
     /// This error occurs when duplicate signers are provided.
     #[msg("Duplicate signers provided")]
     DuplicateSignersProvided,
-
-    /// Bridging transaction mismatch.
-    ///
-    /// This error occurs when the bridging transaction details do not match.
-    #[msg("Bridging transaction details do not match")]
-    BridgingTransactionMismatch,
 
     /// Invalid vault provided.
     ///
@@ -205,4 +193,7 @@ pub enum CustomError {
     /// Guards against e.g. trying to burn a LockUnlock token.
     #[msg("Token is not a Mint/Burn token")]
     NotMintBurn,
+
+    #[msg("Not enough validators signed this transaction")]
+    InsufficientSigners,
 }

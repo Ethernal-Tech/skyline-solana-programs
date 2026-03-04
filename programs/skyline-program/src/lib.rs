@@ -18,8 +18,6 @@
 //! The program uses the following main account types:
 //! - `ValidatorSet`: Stores the list of validators, consensus threshold, last batch ID, and bridge request count
 //! - `Vault`: Represents the vault account that holds bridged tokens
-//! - `BridgingTransaction`: Represents validator-approved transactions for minting/transferring tokens to recipients
-//! - `ValidatorDelta`: Represents pending validator set updates that require consensus
 //!
 //! ## Security Model
 //!
@@ -167,7 +165,6 @@ pub mod skyline_program {
     /// * `InvalidBatchId` - If the batch_id is not greater than the last_batch_id
     /// * `InvalidReceiver` - If the receiver is the same as the payer
     /// * `NoSignersProvided` - If no validator signers are provided
-    /// * `SignerAlreadyApproved` - If a signer has already approved this transaction
     /// * `NotEnoughSigners` - If insufficient validators have signed (checked when threshold is met)
     /// * `InvalidSigner` - If a signer is not in the validator set
     pub fn bridge_transaction(

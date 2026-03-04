@@ -12,8 +12,6 @@ use anchor_lang::prelude::*;
 /// validator approvals and the tokens have been transferred or minted to the recipient.
 #[event]
 pub struct TransactionExecutedEvent {
-    /// The unique identifier of the transaction that was executed
-    pub transaction_id: Pubkey,
     /// The batch ID of the executed transaction
     pub batch_id: u64,
 }

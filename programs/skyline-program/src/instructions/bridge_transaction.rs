@@ -31,16 +31,6 @@ pub struct BridgeTransaction<'info> {
     )]
     pub validator_set: Account<'info, ValidatorSet>,
 
-    /// The bridging transaction account to be created
-    #[account(
-        init_if_needed,
-        payer = payer,
-        space = DISC as usize + BridgingTransaction::INIT_SPACE,
-        seeds = [BRIDGING_TRANSACTION_SEED, batch_id.to_le_bytes().as_ref()],
-        bump
-    )]
-    pub bridging_transaction: Account<'info, BridgingTransaction>,
-
     #[account(mut)]
     pub mint_token: Account<'info, Mint>,
 
@@ -105,38 +95,34 @@ pub struct BridgeTransaction<'info> {
 impl<'info> BridgeTransaction<'info> {
     /// Process the bridge_transaction instruction.
     ///
-    /// This function creates or approves a bridging transaction for transferring tokens
-    /// to a recipient. The first call creates the transaction with the specified details,
-    /// and subsequent calls from validators approve it. Once the consensus threshold is met,
-    /// the tokens are automatically minted (if vault is mint authority) or transferred
-    /// from the vault to the recipient's associated token account, and the transaction
-    /// account is closed.
+    /// Validates that enough validators have signed this transaction in a single call.
+    /// If the threshold is not met, the transaction is rejected outright — there is no
+    /// multi-round accumulation. On success, tokens are minted or transferred to the
+    /// recipient and `last_batch_id` is updated to prevent replay.
     ///
     /// # Arguments
     /// * `ctx` - The instruction context containing all required accounts
     /// * `amount` - The amount of tokens to transfer to the recipient
-    /// * `batch_id` - The batch ID of the transaction (must be greater than last_batch_id)
-    ///
-    /// # Returns
-    /// * `Result<()>` - Returns Ok(()) on success or an error on failure
+    /// * `batch_id` - The batch ID (must be strictly greater than `last_batch_id`)
     ///
     /// # Errors
-    /// * `InvalidBatchId` - If the batch_id is not greater than the last_batch_id
-    /// * `BridgingTransactionMismatch` - If transaction details don't match on subsequent approvals
-    /// * `NoSignersProvided` - If no validator signers are provided
-    /// * `DuplicateSignersProvided` - If duplicate signers are provided
-    /// * `InvalidSigner` - If a signer is not in the validator set
-    /// * `SignerAlreadyApproved` - If a signer has already approved this transaction
+    /// * `InvalidBatchId` - If `batch_id` is not greater than `last_batch_id`
+    /// * `InvalidAmount` - If amount is zero
+    /// * `NoSignersProvided` - If no validator signers are in remaining accounts
+    /// * `DuplicateSignersProvided` - If duplicate signers are present
+    /// * `InvalidSigner` - If any signer is not a registered validator
+    /// * `InsufficientSigners` - If signer count is below the threshold
     ///
     /// # Process Flow
-    /// 1. Creates the transaction account if it doesn't exist, or validates details match
-    /// 2. Validates and collects validator signers from remaining accounts
-    /// 3. Checks for duplicate signers and ensures all are valid validators
-    /// 4. Adds signers to the approval list
-    /// 5. If threshold is met, creates recipient ATA if needed and transfers/mints tokens
-    /// 6. Updates last_batch_id and closes the transaction account
+    /// 1. Validate amount > 0
+    /// 2. Collect and deduplicate validator signers from remaining accounts
+    /// 3. Verify all signers are valid validators
+    /// 4. Verify signer count meets threshold — reject if not
+    /// 5. Create recipient ATA if needed
+    /// 6. Mint or transfer tokens to recipient
+    /// 7. Update `last_batch_id`
+
     pub fn process_instruction(ctx: Context<Self>, amount: u64, batch_id: u64) -> Result<()> {
-        let bridging_transaction = &mut ctx.accounts.bridging_transaction;
         let payer = &ctx.accounts.payer;
         let validator_set = &mut ctx.accounts.validator_set;
         let recipient = &ctx.accounts.recipient;
@@ -150,23 +136,6 @@ impl<'info> BridgeTransaction<'info> {
 
         // Validate amount
         require!(amount > 0, CustomError::InvalidAmount);
-
-        // Store the transaction details
-        if bridging_transaction.id == Pubkey::default() {
-            bridging_transaction.id = bridging_transaction.key();
-            bridging_transaction.amount = amount;
-            bridging_transaction.receiver = recipient.key();
-            bridging_transaction.mint_token = mint.key();
-            bridging_transaction.batch_id = batch_id;
-            bridging_transaction.bump = ctx.bumps.bridging_transaction;
-        } else {
-            require!(
-                bridging_transaction.amount == amount
-                    && bridging_transaction.receiver == recipient.key()
-                    && bridging_transaction.mint_token == mint.key(),
-                CustomError::BridgingTransactionMismatch
-            );
-        }
 
         let signers = ctx
             .remaining_accounts
@@ -192,17 +161,9 @@ impl<'info> BridgeTransaction<'info> {
         );
 
         require!(
-            !signers
-                .iter()
-                .any(|s| bridging_transaction.signers.contains(s)),
-            CustomError::SignerAlreadyApproved
+            (signers.len() as u8) >= validator_set.threshold,
+            CustomError::InsufficientSigners
         );
-
-        bridging_transaction.signers.extend(signers.iter());
-
-        if (bridging_transaction.signers.len() as u8) < validator_set.threshold {
-            return Ok(());
-        }
 
         // Create recipient ATA if it doesn't exist (only after threshold met)
         if recipient_ata.data_is_empty() {
@@ -236,7 +197,7 @@ impl<'info> BridgeTransaction<'info> {
                     cpi_accounts,
                     signer_seeds,
                 ),
-                bridging_transaction.amount,
+                amount,
             )?;
         } else {
             // Prepare the mint_to instruction with validator set as authority
@@ -254,20 +215,14 @@ impl<'info> BridgeTransaction<'info> {
                     cpi_accounts,
                     signer_seeds,
                 ),
-                bridging_transaction.amount,
+                amount,
                 mint.decimals,
             )?;
         }
 
-        emit!(TransactionExecutedEvent {
-            transaction_id: bridging_transaction.id,
-            batch_id: bridging_transaction.batch_id,
-        });
+        emit!(TransactionExecutedEvent { batch_id: batch_id });
 
-        validator_set.last_batch_id = bridging_transaction.batch_id;
-
-        // Close the bridging transaction account if enough signers have approved
-        bridging_transaction.close(payer.to_account_info())?;
+        validator_set.last_batch_id = batch_id;
 
         Ok(())
     }
