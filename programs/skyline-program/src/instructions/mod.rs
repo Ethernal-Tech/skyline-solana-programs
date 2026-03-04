@@ -31,3 +31,5 @@ pub use register_lock_unlock_token::*;
 /// Register a new mint/burn token (authority only)
 pub mod register_mint_burn_token;
 pub use register_mint_burn_token::*;
+
+pub use bridge_transaction::TransferItem;

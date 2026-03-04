@@ -83,12 +83,6 @@ pub enum CustomError {
     #[msg("No signers provided")]
     NoSignersProvided,
 
-    /// Invalid proposal hash.
-    ///
-    /// This error occurs when the proposal hash is not valid.
-    #[msg("Invalid proposal hash")]
-    InvalidProposalHash,
-
     /// Adding existing signer.
     ///
     /// This error occurs when a signer is already in the validator set.
@@ -162,6 +156,7 @@ pub enum CustomError {
 
     #[msg("Fee values overflow when combined — reduce min_operational_fee or bridge_fee")]
     FeeConfigOverflow,
+
     #[msg("Bridging amount is below the minimum threshold")]
     BridgingAmountTooLow,
 
@@ -196,4 +191,19 @@ pub enum CustomError {
 
     #[msg("Not enough validators signed this transaction")]
     InsufficientSigners,
+
+    #[msg("Mint list is empty or inconsistent with transfers.")]
+    InvalidMintList,
+
+    #[msg("mint_index is out of bounds for the provided mints list.")]
+    InvalidMintIndex,
+
+    #[msg("remaining_accounts layout is inconsistent with instruction arguments.")]
+    InvalidRemainingAccounts,
+
+    #[msg("A required account was not found in the transaction account list.")]
+    AccountNotFound,
+
+    #[msg("Transfer count must be greater or equal than 1.")]
+    InvalidTransferCount,
 }

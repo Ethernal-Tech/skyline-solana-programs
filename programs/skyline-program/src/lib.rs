@@ -167,12 +167,13 @@ pub mod skyline_program {
     /// * `NoSignersProvided` - If no validator signers are provided
     /// * `NotEnoughSigners` - If insufficient validators have signed (checked when threshold is met)
     /// * `InvalidSigner` - If a signer is not in the validator set
-    pub fn bridge_transaction(
-        ctx: Context<BridgeTransaction>,
-        amount: u64,
+pub fn bridge_transaction<'info>(
+        ctx: Context<'_, '_, 'info, 'info, BridgeTransaction<'info>>,
+        transfers: Vec<TransferItem>,
+        mints: Vec<Pubkey>,
         batch_id: u64,
     ) -> Result<()> {
-        BridgeTransaction::process_instruction(ctx, amount, batch_id)
+        BridgeTransaction::process_instruction(ctx, transfers, mints, batch_id)
     }
     /// Update the fee configuration for the bridge.
     ///

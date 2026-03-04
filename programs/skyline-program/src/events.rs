@@ -14,6 +14,9 @@ use anchor_lang::prelude::*;
 pub struct TransactionExecutedEvent {
     /// The batch ID of the executed transaction
     pub batch_id: u64,
+
+    /// The number of transfers in the executed transaction
+    pub transfer_count: u8,
 }
 
 /// Event emitted when the validator set is successfully updated.
