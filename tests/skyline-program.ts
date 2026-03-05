@@ -23,7 +23,7 @@ import {
 } from "@solana/spl-token";
 import { BN } from "bn.js";
 
-describe.only("skyline-program", () => {
+describe("skyline-program", () => {
   // ============================================================================
   // TEST SETUP
   // ============================================================================
@@ -139,7 +139,7 @@ describe.only("skyline-program", () => {
       });
     });
 
-    describe.only("Success Case", () => {
+    describe("Success Case", () => {
       it("initializes state correctly with 5 validators", async function () {
         const validatorCount = 5;
         const validatorPubkeys = validators
@@ -320,9 +320,9 @@ describe.only("skyline-program", () => {
         }
       }
 
-      console.log(
+      /* console.log(
         `  ℹ Validator setup: ${registeredCount} registered, threshold=${threshold}`
-      );
+      ); */
 
       // ── Step 4: Airdrop all active validators ─────────────────────────────
       //
@@ -368,10 +368,10 @@ describe.only("skyline-program", () => {
 
       await fixture.mints.mintTo(mint2, vaultPDA, 1_000_000_000, true);
 
-      console.log(
-        `  ℹ Mints ready: mint1=${mint1.toBase58().slice(0, 8)}… ` +
-          `mint2=${mint2.toBase58().slice(0, 8)}…`
-      );
+       /*  console.log(
+          `  ℹ Mints ready: mint1=${mint1.toBase58().slice(0, 8)}… ` +
+            `mint2=${mint2.toBase58().slice(0, 8)}…`
+        ); */
     });
     //describe("Bridge Transaction — Error Cases (SAD paths)", () => {
     /*  let mint1: web3.PublicKey;
@@ -950,9 +950,9 @@ describe.only("skyline-program", () => {
     it("fails when batch_id is less than last_batch_id", async () => {
       const recipient = web3.Keypair.generate().publicKey;
       const vs = await fixture.getValidatorSet();
-      console.log(`  ℹ Current last_batch_id=${vs.lastBatchId.toString()} `);
+      //console.log(`  ℹ Current last_batch_id=${vs.lastBatchId.toString()} `);
       const oldBatchId = vs.lastBatchId.sub(new BN(1));
-      console.log(`  ℹ Testing with old batch_id=${oldBatchId.toString()} `);
+      //console.log(`  ℹ Testing with old batch_id=${oldBatchId.toString()} `);
 
       await fixture.bridgeTransaction.expectError(
         {
@@ -1018,10 +1018,10 @@ describe.only("skyline-program", () => {
       const vaultAta = getAssociatedTokenAddressSync(mint1, vaultPDA, true);
       const vaultBefore = await fixture.tokenBalances.snapshot(vaultAta);
 
-      console.log(
+      /* console.log(
         activeValidators.slice(0, threshold).length,
         "validators signing this tx"
-      );
+      ); */
 
       await fixture.bridgeTransaction.call({
         transfers: recipients.map((r) => ({
@@ -1199,7 +1199,7 @@ describe.only("skyline-program", () => {
   // ============================================================================
   // BRIDGE REQUEST TESTS
   // ============================================================================
-  describe.only("Bridge Request", () => {
+  describe("Bridge Request", () => {
     let mint1: web3.PublicKey; // lock/unlock, 9 decimals
     let vaultPDA: web3.PublicKey;
     let user1: web3.Keypair;
@@ -1240,11 +1240,11 @@ describe.only("skyline-program", () => {
       await fixture.mints.mintTo(mint1, user1.publicKey, 1_000_000_000); // 1B tokens
       await fixture.mints.mintTo(mint1, user2.publicKey, 500_000_000); // 500M tokens
 
-      console.log(
+      /* console.log(
         `  ℹ Bridge Request setup: mint1=${mint1
           .toBase58()
           .slice(0, 8)}… (lock/unlock)`
-      );
+      ); */
     });
 
     // ═══════════════════════════════════════════════════════════════════
