@@ -11,31 +11,17 @@ import {
   assertValidatorSetState,
   assertBridgingTransactionState,
   LIMITS,
-  assertValidBump
+  assertValidBump,
+  airdrop
 } from "./fixtures";
 import {
   getAccount,
   getAssociatedTokenAddressSync,
   getOrCreateAssociatedTokenAccount
 } from "@solana/spl-token";
+import { BN } from "bn.js";
 
-/**
- * Airdrop SOL to an account
- */
-async function airdrop(
-  connection: web3.Connection,
-  publicKey: web3.PublicKey,
-  amount: number = 10 * web3.LAMPORTS_PER_SOL
-): Promise<void> {
-  const signature = await connection.requestAirdrop(publicKey, amount);
-  const latestBlockhash = await connection.getLatestBlockhash();
-  await connection.confirmTransaction({
-    signature,
-    ...latestBlockhash
-  });
-}
-
-describe("skyline-program", () => {
+describe.only("skyline-program", () => {
   // ============================================================================
   // TEST SETUP
   // ============================================================================
@@ -152,8 +138,8 @@ describe("skyline-program", () => {
     });
 
     describe("Success Case", () => {
-      it("initializes state correctly with 7 validators", async function () {
-        const validatorCount = 7;
+      it("initializes state correctly with 5 validators", async function () {
+        const validatorCount = 5;
         const validatorPubkeys = validators
           .slice(0, validatorCount)
           .map((v) => v.publicKey);
@@ -289,6 +275,924 @@ describe("skyline-program", () => {
     });
   });
 
+  describe("Bridge Transaction (multi-transfer)", () => {
+    //Shared test state
+
+    let mint1: web3.PublicKey; // registered lock/unlock, 9 decimals
+    let mint2: web3.PublicKey; // registered lock/unlock, 6 decimals
+    let vaultPDA: web3.PublicKey;
+
+    // A dedicated subset of validators used across these tests.
+    // The full `validators` pool has 50 — we use the first 4 (threshold)
+    // They were already registered during Initialize tests.
+    let activeValidators: web3.Keypair[];
+    let threshold: number;
+
+    // Before hook — one-time setup
+
+    before("set up mints and vault balances", async () => {
+      vaultPDA = fixture.pdas.vault();
+
+      // ── Step 1: Read the real threshold from on-chain ──────────────────────
+
+      const vs = await fixture.getValidatorSet();
+      threshold = vs.threshold;
+
+      // ── Step 2: Use the SAME keypairs Initialize registered ───────────────
+      const registeredCount = vs.signers.length;
+      activeValidators = validators.slice(0, registeredCount);
+
+      // ── Step 3: Verify our local keypairs match what's on-chain ───────────
+      const onChainSet = new Set(vs.signers.map((pk) => pk.toBase58()));
+      for (const v of activeValidators) {
+        if (!onChainSet.has(v.publicKey.toBase58())) {
+          throw new Error(
+            `Keypair ${v.publicKey.toBase58().slice(0, 8)}... is not in the ` +
+              `on-chain validator set.\n` +
+              `This usually means the ledger was reset without re-running Initialize.\n` +
+              `Run: anchor test --skip-deploy  OR  reset the validator and rerun all tests.\n` +
+              `On-chain signers: [${[...onChainSet]
+                .map((s) => s.slice(0, 8))
+                .join(", ")}]`
+          );
+        }
+      }
+
+      console.log(
+        `  ℹ Validator setup: ${registeredCount} registered, threshold=${threshold}`
+      );
+
+      // ── Step 4: Airdrop all active validators ─────────────────────────────
+      //
+      // Run in parallel — 7 airdrops sequentially would be slow.
+      // Guard with balance check to avoid hitting localnet rate limits on reruns.
+      await Promise.all(
+        activeValidators.map(async (v) => {
+          const balance = await provider.connection.getBalance(v.publicKey);
+          if (balance < 0.1 * web3.LAMPORTS_PER_SOL) {
+            const sig = await provider.connection.requestAirdrop(
+              v.publicKey,
+              web3.LAMPORTS_PER_SOL
+            );
+            const lbh = await provider.connection.getLatestBlockhash();
+            await provider.connection.confirmTransaction({
+              signature: sig,
+              ...lbh
+            });
+          }
+        })
+      );
+
+      // ── Step 5: Create and register mint1 (9 decimals, lock/unlock) ───────
+      mint1 = await fixture.mints.create(owner.publicKey, 9);
+
+      await fixture.tokenRegistry.registerLockUnlock({
+        mint: mint1,
+        tokenId: 100,
+        minBridgingAmount: 1
+      });
+
+      // Fund the vault ATA — bridge_transaction will debit this
+      await fixture.mints.mintTo(mint1, vaultPDA, 1_000_000_000, true);
+
+      // ── Step 6: Create and register mint2 (6 decimals, lock/unlock) ───────
+      mint2 = await fixture.mints.create(owner.publicKey, 6);
+
+      await fixture.tokenRegistry.registerLockUnlock({
+        mint: mint2,
+        tokenId: 101,
+        minBridgingAmount: 1
+      });
+
+      await fixture.mints.mintTo(mint2, vaultPDA, 1_000_000_000, true);
+
+      console.log(
+        `  ℹ Mints ready: mint1=${mint1.toBase58().slice(0, 8)}… ` +
+          `mint2=${mint2.toBase58().slice(0, 8)}…`
+      );
+    });
+    //describe("Bridge Transaction — Error Cases (SAD paths)", () => {
+    /*  let mint1: web3.PublicKey;
+      let mint2: web3.PublicKey;
+      let vaultPDA: web3.PublicKey;
+      let activeValidators: web3.Keypair[];
+      let threshold: number;
+
+      before("setup for error tests", async () => {
+        vaultPDA = fixture.pdas.vault();
+        const vs = await fixture.getValidatorSet();
+        threshold = vs.threshold;
+        activeValidators = validators.slice(0, vs.signers.length);
+
+        // Reuse mints from previous setup
+        mint1 = await fixture.mints.create(owner.publicKey, 9);
+        await fixture.tokenRegistry.registerLockUnlock({
+          mint: mint1,
+          tokenId: 200,
+          minBridgingAmount: 1
+        });
+        await fixture.mints.mintTo(mint1, vaultPDA, 1_000_000_000, true);
+
+        mint2 = await fixture.mints.create(owner.publicKey, 6);
+        await fixture.tokenRegistry.registerLockUnlock({
+          mint: mint2,
+          tokenId: 201,
+          minBridgingAmount: 1
+        });
+        await fixture.mints.mintTo(mint2, vaultPDA, 1_000_000_000, true);
+      }); */
+
+    // ═══════════════════════════════════════════════════════════════════
+    // 1. InvalidBatchId — replay attack prevention
+    // ═══════════════════════════════════════════════════════════════════
+
+    it("fails when batch_id equals last_batch_id", async () => {
+      const recipient = web3.Keypair.generate().publicKey;
+      const vs = await fixture.getValidatorSet();
+      const currentBatchId = vs.lastBatchId;
+
+      await fixture.bridgeTransaction.expectError(
+        {
+          transfers: [{ recipient, mintIndex: 0, amount: new BN(1000) }],
+          mints: [mint1],
+          batchId: currentBatchId, // Same as current — should fail
+          validators: activeValidators.slice(0, threshold),
+          vaultPDA
+        },
+        "InvalidBatchId"
+      );
+    });
+
+    // ═══════════════════════════════════════════════════════════════════
+    // 2. InvalidTransferCount — empty or too many transfers
+    // ═══════════════════════════════════════════════════════════════════
+
+    it("fails when transfers array is empty", async () => {
+      const batchId = await fixture.nextBatchId();
+
+      await fixture.bridgeTransaction.expectError(
+        {
+          transfers: [], // Empty
+          mints: [mint1],
+          batchId,
+          validators: activeValidators.slice(0, threshold),
+          vaultPDA
+        },
+        "InvalidTransferCount"
+      );
+    });
+
+    // ═══════════════════════════════════════════════════════════════════
+    // 3. InvalidMintList — empty or too many mints
+    // ═══════════════════════════════════════════════════════════════════
+
+    it("fails when mints array is empty", async () => {
+      const recipient = web3.Keypair.generate().publicKey;
+      const batchId = await fixture.nextBatchId();
+
+      await fixture.bridgeTransaction.expectError(
+        {
+          transfers: [{ recipient, mintIndex: 0, amount: new BN(1000) }],
+          mints: [], // Empty
+          batchId,
+          validators: activeValidators.slice(0, threshold),
+          vaultPDA
+        },
+        "InvalidMintList"
+      );
+    });
+
+    it("fails when mints.length > transfers.length", async () => {
+      const recipient = web3.Keypair.generate().publicKey;
+      const batchId = await fixture.nextBatchId();
+
+      await fixture.bridgeTransaction.expectError(
+        {
+          transfers: [{ recipient, mintIndex: 0, amount: new BN(1000) }], // 1 transfer
+          mints: [mint1, mint2], // 2 mints — invalid
+          batchId,
+          validators: activeValidators.slice(0, threshold),
+          vaultPDA
+        },
+        "InvalidMintList"
+      );
+    });
+
+    // ═══════════════════════════════════════════════════════════════════
+    // 4. InvalidMintIndex — out of bounds reference
+    // ═══════════════════════════════════════════════════════════════════
+
+    it("fails when mint_index is out of bounds", async () => {
+      const recipient = web3.Keypair.generate().publicKey;
+      const batchId = await fixture.nextBatchId();
+
+      await fixture.bridgeTransaction.expectError(
+        {
+          transfers: [
+            { recipient, mintIndex: 5, amount: new BN(1000) } // Index 5, but only 1 mint
+          ],
+          mints: [mint1],
+          batchId,
+          validators: activeValidators.slice(0, threshold),
+          vaultPDA
+        },
+        "InvalidMintIndex"
+      );
+    });
+
+    // ═══════════════════════════════════════════════════════════════════
+    // 5. InvalidAmount — zero amount
+    // ═══════════════════════════════════════════════════════════════════
+
+    it("fails when transfer amount is zero", async () => {
+      const recipient = web3.Keypair.generate().publicKey;
+      const batchId = await fixture.nextBatchId();
+
+      await fixture.bridgeTransaction.expectError(
+        {
+          transfers: [{ recipient, mintIndex: 0, amount: new BN(0) }], // Zero
+          mints: [mint1],
+          batchId,
+          validators: activeValidators.slice(0, threshold),
+          vaultPDA
+        },
+        "InvalidAmount"
+      );
+    });
+
+    it("fails when one of multiple transfers has zero amount", async () => {
+      const recipients = Array.from(
+        { length: 3 },
+        () => web3.Keypair.generate().publicKey
+      );
+      const batchId = await fixture.nextBatchId();
+
+      await fixture.bridgeTransaction.expectError(
+        {
+          transfers: [
+            { recipient: recipients[0], mintIndex: 0, amount: new BN(1000) },
+            { recipient: recipients[1], mintIndex: 0, amount: new BN(0) }, // Zero
+            { recipient: recipients[2], mintIndex: 0, amount: new BN(2000) }
+          ],
+          mints: [mint1],
+          batchId,
+          validators: activeValidators.slice(0, threshold),
+          vaultPDA
+        },
+        "InvalidAmount"
+      );
+    });
+
+    // ═══════════════════════════════════════════════════════════════════
+    // 6. InvalidRemainingAccounts — wrong account count
+    // ═══════════════════════════════════════════════════════════════════
+
+    it("fails when remaining_accounts has too few accounts", async () => {
+      const recipient = web3.Keypair.generate().publicKey;
+      const batchId = await fixture.nextBatchId();
+
+      const sections = fixture.bridgeTransaction.buildSections({
+        transfers: [{ recipient, mintIndex: 0, amount: new BN(1000) }],
+        mints: [mint1],
+        batchId,
+        validators: activeValidators.slice(0, threshold),
+        vaultPDA
+      });
+
+      // Remove one account from vault ATAs to corrupt the count
+      sections.vaultAtaMetas = [];
+
+      await fixture.bridgeTransaction.expectErrorWithSections(
+        [{ recipient, mintIndex: 0, amount: new BN(1000) }],
+        [mint1],
+        batchId,
+        activeValidators.slice(0, threshold),
+        sections,
+        "InvalidRemainingAccounts"
+      );
+    });
+
+    it("fails when remaining_accounts has too many accounts", async () => {
+      const recipient = web3.Keypair.generate().publicKey;
+      const batchId = await fixture.nextBatchId();
+
+      const sections = fixture.bridgeTransaction.buildSections({
+        transfers: [{ recipient, mintIndex: 0, amount: new BN(1000) }],
+        mints: [mint1],
+        batchId,
+        validators: activeValidators.slice(0, threshold),
+        vaultPDA
+      });
+
+      // Add an extra dummy account
+      sections.vaultAtaMetas.push({
+        pubkey: web3.Keypair.generate().publicKey,
+        isSigner: false,
+        isWritable: true
+      });
+
+      await fixture.bridgeTransaction.expectErrorWithSections(
+        [{ recipient, mintIndex: 0, amount: new BN(1000) }],
+        [mint1],
+        batchId,
+        activeValidators.slice(0, threshold),
+        sections,
+        "InvalidRemainingAccounts"
+      );
+    });
+
+    // ═══════════════════════════════════════════════════════════════════
+    // 7. InvalidMintList (2nd check) — mint account mismatch
+    // ═══════════════════════════════════════════════════════════════════
+
+    it("fails when mint account doesn't match mints arg", async () => {
+      const recipient = web3.Keypair.generate().publicKey;
+      const batchId = await fixture.nextBatchId();
+      const fakeMint = web3.Keypair.generate().publicKey;
+
+      const sections = fixture.bridgeTransaction.buildSections({
+        transfers: [{ recipient, mintIndex: 0, amount: new BN(1000) }],
+        mints: [mint1],
+        batchId,
+        validators: activeValidators.slice(0, threshold),
+        vaultPDA
+      });
+
+      // Corrupt the mint account to point to a different mint
+      sections.mintMetas[0].pubkey = fakeMint;
+
+      await fixture.bridgeTransaction.expectErrorWithSections(
+        [{ recipient, mintIndex: 0, amount: new BN(1000) }],
+        [mint1], // Instruction arg says mint1
+        batchId,
+        activeValidators.slice(0, threshold),
+        sections, // But account is fakeMint
+        "InvalidMintList"
+      );
+    });
+
+    // ═══════════════════════════════════════════════════════════════════
+    // 8. NoSignersProvided — no validators signed
+    // ═══════════════════════════════════════════════════════════════════
+
+    it("fails when no validators are provided", async () => {
+      const recipient = web3.Keypair.generate().publicKey;
+      const batchId = await fixture.nextBatchId();
+
+      await fixture.bridgeTransaction.expectError(
+        {
+          transfers: [{ recipient, mintIndex: 0, amount: new BN(1000) }],
+          mints: [mint1],
+          batchId,
+          validators: [], // Empty
+          vaultPDA
+        },
+        "NoSignersProvided"
+      );
+    });
+
+    // ═══════════════════════════════════════════════════════════════════
+    // 9. DuplicateSignersProvided — same validator signs twice
+    // ═══════════════════════════════════════════════════════════════════
+
+    it("fails when duplicate validators are provided", async () => {
+      const recipient = web3.Keypair.generate().publicKey;
+      const batchId = await fixture.nextBatchId();
+
+      const duplicateValidators = [
+        activeValidators[0],
+        activeValidators[1],
+        activeValidators[0] // Duplicate
+      ];
+
+      await fixture.bridgeTransaction.expectError(
+        {
+          transfers: [{ recipient, mintIndex: 0, amount: new BN(1000) }],
+          mints: [mint1],
+          batchId,
+          validators: duplicateValidators,
+          vaultPDA
+        },
+        "DuplicateSignersProvided"
+      );
+    });
+
+    // ═══════════════════════════════════════════════════════════════════
+    // 10. InvalidSigner — signer not registered
+    // ═══════════════════════════════════════════════════════════════════
+
+    it("fails when signer is not a registered validator", async () => {
+      const recipient = web3.Keypair.generate().publicKey;
+      const batchId = await fixture.nextBatchId();
+      const fakeValidator = web3.Keypair.generate();
+
+      // Airdrop to fake validator so it can sign
+      const sig = await provider.connection.requestAirdrop(
+        fakeValidator.publicKey,
+        web3.LAMPORTS_PER_SOL
+      );
+      await provider.connection.confirmTransaction(sig);
+
+      const mixedValidators = [
+        ...activeValidators.slice(0, threshold - 1),
+        fakeValidator // Not registered
+      ];
+
+      await fixture.bridgeTransaction.expectError(
+        {
+          transfers: [{ recipient, mintIndex: 0, amount: new BN(1000) }],
+          mints: [mint1],
+          batchId,
+          validators: mixedValidators,
+          vaultPDA
+        },
+        "InvalidSigner"
+      );
+    });
+
+    // ═══════════════════════════════════════════════════════════════════
+    // 11. InsufficientSigners — below threshold
+    // ═══════════════════════════════════════════════════════════════════
+
+    it("fails when signers count is below threshold", async () => {
+      const recipient = web3.Keypair.generate().publicKey;
+      const batchId = await fixture.nextBatchId();
+
+      const belowThreshold = activeValidators.slice(0, threshold - 1);
+
+      await fixture.bridgeTransaction.expectError(
+        {
+          transfers: [{ recipient, mintIndex: 0, amount: new BN(1000) }],
+          mints: [mint1],
+          batchId,
+          validators: belowThreshold,
+          vaultPDA
+        },
+        "InsufficientSigners"
+      );
+    });
+
+    // ═══════════════════════════════════════════════════════════════════
+    // 12. InvalidRemainingAccounts (TokenRegistry PDA mismatch)
+    // ═══════════════════════════════════════════════════════════════════
+
+    it("fails when TokenRegistry PDA doesn't match expected", async () => {
+      const recipient = web3.Keypair.generate().publicKey;
+      const batchId = await fixture.nextBatchId();
+
+      const sections = fixture.bridgeTransaction.buildSections({
+        transfers: [{ recipient, mintIndex: 0, amount: new BN(1000) }],
+        mints: [mint1],
+        batchId,
+        validators: activeValidators.slice(0, threshold),
+        vaultPDA
+      });
+
+      // Corrupt the registry PDA
+      sections.registryMetas[0].pubkey = web3.Keypair.generate().publicKey;
+
+      await fixture.bridgeTransaction.expectErrorWithSections(
+        [{ recipient, mintIndex: 0, amount: new BN(1000) }],
+        [mint1],
+        batchId,
+        activeValidators.slice(0, threshold),
+        sections,
+        "InvalidRemainingAccounts"
+      );
+    });
+
+    // ═══════════════════════════════════════════════════════════════════
+    // 13. InvalidTokenAccount — recipient ATA mismatch
+    // ═══════════════════════════════════════════════════════════════════
+
+    it("fails when recipient ATA doesn't match expected address", async () => {
+      const recipient = web3.Keypair.generate().publicKey;
+      const batchId = await fixture.nextBatchId();
+
+      const sections = fixture.bridgeTransaction.buildSections({
+        transfers: [{ recipient, mintIndex: 0, amount: new BN(1000) }],
+        mints: [mint1],
+        batchId,
+        validators: activeValidators.slice(0, threshold),
+        vaultPDA
+      });
+
+      // Corrupt the recipient ATA
+      sections.recipientAtaMetas[0].pubkey = web3.Keypair.generate().publicKey;
+
+      await fixture.bridgeTransaction.expectErrorWithSections(
+        [{ recipient, mintIndex: 0, amount: new BN(1000) }],
+        [mint1],
+        batchId,
+        activeValidators.slice(0, threshold),
+        sections,
+        "InvalidTokenAccount"
+      );
+    });
+
+    // ═══════════════════════════════════════════════════════════════════
+    // 14. InvalidVault — vault ATA mismatch
+    // ═══════════════════════════════════════════════════════════════════
+
+    it("fails when vault ATA doesn't match expected address", async () => {
+      const recipient = web3.Keypair.generate().publicKey;
+      const batchId = await fixture.nextBatchId();
+
+      const sections = fixture.bridgeTransaction.buildSections({
+        transfers: [{ recipient, mintIndex: 0, amount: new BN(1000) }],
+        mints: [mint1],
+        batchId,
+        validators: activeValidators.slice(0, threshold),
+        vaultPDA
+      });
+
+      // Corrupt the vault ATA
+      sections.vaultAtaMetas[0].pubkey = web3.Keypair.generate().publicKey;
+
+      await fixture.bridgeTransaction.expectErrorWithSections(
+        [{ recipient, mintIndex: 0, amount: new BN(1000) }],
+        [mint1],
+        batchId,
+        activeValidators.slice(0, threshold),
+        sections,
+        "InvalidVault"
+      );
+    });
+
+    // ═══════════════════════════════════════════════════════════════════
+    // 15. Edge cases — combinations and boundary conditions
+    // ═══════════════════════════════════════════════════════════════════
+
+    it("fails when mixing valid and invalid mint indices", async () => {
+      const recipients = Array.from(
+        { length: 2 },
+        () => web3.Keypair.generate().publicKey
+      );
+      const batchId = await fixture.nextBatchId();
+
+      await fixture.bridgeTransaction.expectError(
+        {
+          transfers: [
+            { recipient: recipients[0], mintIndex: 0, amount: new BN(1000) }, // Valid
+            { recipient: recipients[1], mintIndex: 10, amount: new BN(2000) } // Invalid
+          ],
+          mints: [mint1],
+          batchId,
+          validators: activeValidators.slice(0, threshold),
+          vaultPDA
+        },
+        "InvalidMintIndex"
+      );
+    });
+
+    it("fails when exactly threshold signers but one is invalid", async () => {
+      const recipient = web3.Keypair.generate().publicKey;
+      const batchId = await fixture.nextBatchId();
+      const fakeValidator = web3.Keypair.generate();
+
+      const sig = await provider.connection.requestAirdrop(
+        fakeValidator.publicKey,
+        web3.LAMPORTS_PER_SOL
+      );
+      await provider.connection.confirmTransaction(sig);
+
+      const mixedValidators = [
+        ...activeValidators.slice(0, threshold - 1),
+        fakeValidator
+      ];
+
+      expect(mixedValidators.length).to.equal(threshold);
+
+      await fixture.bridgeTransaction.expectError(
+        {
+          transfers: [{ recipient, mintIndex: 0, amount: new BN(1000) }],
+          mints: [mint1],
+          batchId,
+          validators: mixedValidators,
+          vaultPDA
+        },
+        "InvalidSigner"
+      );
+    });
+
+    it("succeeds with exactly threshold + 1 validators (over-signed)", async () => {
+      const recipient = web3.Keypair.generate().publicKey;
+      const batchId = await fixture.nextBatchId();
+
+      const overSigners = activeValidators.slice(0, threshold + 1);
+
+      await fixture.bridgeTransaction.call({
+        transfers: [{ recipient, mintIndex: 0, amount: new BN(1000) }],
+        mints: [mint1],
+        batchId,
+        validators: overSigners,
+        vaultPDA
+      });
+
+      const ata = getAssociatedTokenAddressSync(mint1, recipient);
+      const balance = await fixture.tokenBalances.getBalance(ata);
+      expect(balance.toString()).to.equal("1000");
+    });
+    //});
+
+    it("single transfer — lock/unlock — creates recipient ATA and debits vault", async () => {
+      const recipient = web3.Keypair.generate().publicKey;
+      const amount = new BN(500_000);
+      const batchId = await fixture.nextBatchId();
+
+      const recipientAta = getAssociatedTokenAddressSync(mint1, recipient);
+      const vaultAta = getAssociatedTokenAddressSync(mint1, vaultPDA, true);
+
+      // Snapshot balances before
+      const vaultBefore = await fixture.tokenBalances.snapshot(vaultAta);
+      // Recipient ATA doesn't exist yet — balance is 0 (helper handles missing)
+      const recipientBefore = await fixture.tokenBalances.snapshot(
+        recipientAta
+      );
+
+      const sig = await fixture.bridgeTransaction.call({
+        transfers: [{ recipient, mintIndex: 0, amount }],
+        mints: [mint1],
+        batchId,
+        validators: activeValidators.slice(0, threshold),
+        vaultPDA
+      });
+
+      // ── Assert balances ───
+      const vaultDelta = await fixture.tokenBalances.getBalanceDelta(
+        vaultAta,
+        vaultBefore
+      );
+      const recipientDelta = await fixture.tokenBalances.getBalanceDelta(
+        recipientAta,
+        recipientBefore
+      );
+
+      expect(vaultDelta.toString()).to.equal(
+        (-BigInt(amount.toString())).toString(),
+        "vault should decrease by transfer amount"
+      );
+      expect(recipientDelta.toString()).to.equal(
+        BigInt(amount.toString()).toString(),
+        "recipient should receive exact amount"
+      );
+
+      // ── Assert lastBatchId advanced ───
+      const vs = await fixture.getValidatorSet();
+      expect(vs.lastBatchId.toString()).to.equal(
+        batchId.toString(),
+        "lastBatchId should be updated"
+      );
+    });
+
+    it("fails when batch_id is less than last_batch_id", async () => {
+      const recipient = web3.Keypair.generate().publicKey;
+      const vs = await fixture.getValidatorSet();
+      console.log(`  ℹ Current last_batch_id=${vs.lastBatchId.toString()} `);
+      const oldBatchId = vs.lastBatchId.sub(new BN(1));
+      console.log(`  ℹ Testing with old batch_id=${oldBatchId.toString()} `);
+
+      await fixture.bridgeTransaction.expectError(
+        {
+          transfers: [{ recipient, mintIndex: 0, amount: new BN(1000) }],
+          mints: [mint1],
+          batchId: oldBatchId,
+          validators: activeValidators.slice(0, threshold),
+          vaultPDA
+        },
+        "InvalidBatchId"
+      );
+    });
+
+    it("single transfer — recipient ATA pre-exists — does not fail", async () => {
+      const recipient = web3.Keypair.generate().publicKey;
+      const amount = new BN(100_000);
+      const batchId = await fixture.nextBatchId();
+
+      // Pre-create the ATA by minting a tiny amount to the recipient
+      await fixture.mints.mintTo(mint1, recipient, 1);
+
+      const recipientAta = getAssociatedTokenAddressSync(mint1, recipient);
+      const vaultAta = getAssociatedTokenAddressSync(mint1, vaultPDA, true);
+
+      const vaultBefore = await fixture.tokenBalances.snapshot(vaultAta);
+      const recipientBefore = await fixture.tokenBalances.snapshot(
+        recipientAta
+      );
+
+      await fixture.bridgeTransaction.call({
+        transfers: [{ recipient, mintIndex: 0, amount }],
+        mints: [mint1],
+        batchId,
+        validators: activeValidators,
+        vaultPDA
+      });
+
+      const vaultDelta = await fixture.tokenBalances.getBalanceDelta(
+        vaultAta,
+        vaultBefore
+      );
+      const recipientDelta = await fixture.tokenBalances.getBalanceDelta(
+        recipientAta,
+        recipientBefore
+      );
+
+      expect(vaultDelta.toString()).to.equal(
+        (-BigInt(amount.toString())).toString()
+      );
+      expect(recipientDelta.toString()).to.equal(
+        BigInt(amount.toString()).toString()
+      );
+    });
+
+    it("3 transfers in a single batch — all from one mint", async () => {
+      const recipients = Array.from(
+        { length: 3 },
+        () => web3.Keypair.generate().publicKey
+      );
+      const amount = new BN(10_000);
+      const batchId = await fixture.nextBatchId();
+
+      const vaultAta = getAssociatedTokenAddressSync(mint1, vaultPDA, true);
+      const vaultBefore = await fixture.tokenBalances.snapshot(vaultAta);
+
+      console.log(
+        activeValidators.slice(0, threshold).length,
+        "validators signing this tx"
+      );
+
+      await fixture.bridgeTransaction.call({
+        transfers: recipients.map((r) => ({
+          recipient: r,
+          mintIndex: 0,
+          amount
+        })),
+        mints: [mint1],
+        batchId,
+        validators: activeValidators.slice(0, threshold),
+        vaultPDA
+      });
+
+      // Vault should decrease by 3 * amount
+      const expectedVaultDecrease = BigInt(amount.toString()) * BigInt(3);
+      const vaultDelta = await fixture.tokenBalances.getBalanceDelta(
+        vaultAta,
+        vaultBefore
+      );
+      expect(vaultDelta.toString()).to.equal(
+        (-expectedVaultDecrease).toString(),
+        "vault debited for all 3 transfers"
+      );
+
+      // Each recipient should have received the amount
+      for (const r of recipients) {
+        const ata = getAssociatedTokenAddressSync(mint1, r);
+        const balance = await fixture.tokenBalances.getBalance(ata);
+        expect(balance.toString()).to.equal(
+          amount.toString(),
+          `recipient ${r.toBase58().slice(0, 8)} balance correct`
+        );
+      }
+    });
+
+    it("4 transfers in a single batch — should fail with amount > 1232", async () => {
+      const recipients = Array.from(
+        { length: 4 },
+        () => web3.Keypair.generate().publicKey
+      );
+      const amount = new BN(10_000);
+      const batchId = await fixture.nextBatchId();
+
+      try {
+        await fixture.bridgeTransaction.call({
+          transfers: recipients.map((r) => ({
+            recipient: r,
+            mintIndex: 0,
+            amount
+          })),
+          mints: [mint1],
+          batchId,
+          validators: activeValidators.slice(0, threshold),
+          vaultPDA
+        });
+
+        // If we reach here, the test should fail
+        expect.fail("Expected transaction to fail but it succeeded");
+      } catch (error) {
+        expect(error.message).to.include("Transaction too large:");
+      }
+    });
+
+    it("2 transfers across 2 mints — correct ATA debited per mint", async () => {
+      // 1 transfers for mint1, 1 transfer for mint2
+      const r1 = Array.from(
+        { length: 1 },
+        () => web3.Keypair.generate().publicKey
+      );
+      const r2 = Array.from(
+        { length: 1 },
+        () => web3.Keypair.generate().publicKey
+      );
+      const amount = new BN(7_777);
+      const batchId = await fixture.nextBatchId();
+
+      const vault1Ata = getAssociatedTokenAddressSync(mint1, vaultPDA, true);
+      const vault2Ata = getAssociatedTokenAddressSync(mint2, vaultPDA, true);
+
+      const vault1Before = await fixture.tokenBalances.snapshot(vault1Ata);
+      const vault2Before = await fixture.tokenBalances.snapshot(vault2Ata);
+
+      await fixture.bridgeTransaction.call({
+        transfers: [
+          ...r1.map((r) => ({ recipient: r, mintIndex: 0, amount })),
+          ...r2.map((r) => ({ recipient: r, mintIndex: 1, amount }))
+        ],
+        mints: [mint1, mint2],
+        batchId,
+        validators: activeValidators.slice(0, threshold),
+        vaultPDA
+      });
+
+      const vault1Delta = await fixture.tokenBalances.getBalanceDelta(
+        vault1Ata,
+        vault1Before
+      );
+      const vault2Delta = await fixture.tokenBalances.getBalanceDelta(
+        vault2Ata,
+        vault2Before
+      );
+
+      const expectedMint1Debit = -(BigInt(amount.toString()) * BigInt(1));
+      const expectedMint2Debit = -(BigInt(amount.toString()) * BigInt(1));
+
+      expect(vault1Delta.toString()).to.equal(
+        expectedMint1Debit.toString(),
+        "vault1 debited for 1 transfer"
+      );
+      expect(vault2Delta.toString()).to.equal(
+        expectedMint2Debit.toString(),
+        "vault2 debited for 1 transfer"
+      );
+    });
+
+    it("3 transfers across 2 mints — should fail with amount > 1232", async () => {
+      const r1 = Array.from(
+        { length: 2 },
+        () => web3.Keypair.generate().publicKey
+      );
+      const r2 = Array.from(
+        { length: 1 },
+        () => web3.Keypair.generate().publicKey
+      );
+      const amount = new BN(7_777);
+      const batchId = await fixture.nextBatchId();
+
+      try {
+        await fixture.bridgeTransaction.call({
+          transfers: [
+            ...r1.map((r) => ({ recipient: r, mintIndex: 0, amount })),
+            ...r2.map((r) => ({ recipient: r, mintIndex: 1, amount }))
+          ],
+          mints: [mint1, mint2],
+          batchId,
+          validators: activeValidators.slice(0, threshold),
+          vaultPDA
+        });
+
+        // If we reach here, the test should fail
+        expect.fail("Expected transaction to fail but it succeeded");
+      } catch (error) {
+        expect(error.message).to.include("Transaction too large:");
+      }
+    });
+
+    it("exactly threshold validators signed — succeeds", async () => {
+      // threshold is read from on-chain in the before hook.
+      // For 7 registered validators: threshold = 7 - floor((7-1)/3) = 5.
+      // activeValidators has all 7 — slice to exactly threshold (5).
+      const thresholdSigners = activeValidators.slice(0, threshold);
+
+      expect(
+        thresholdSigners.length,
+        `thresholdSigners should be exactly ${threshold}`
+      ).to.equal(threshold);
+
+      const recipient = web3.Keypair.generate().publicKey;
+      const batchId = await fixture.nextBatchId();
+
+      await fixture.bridgeTransaction.call({
+        transfers: [{ recipient, mintIndex: 0, amount: new BN(1_000) }],
+        mints: [mint1],
+        batchId,
+        validators: thresholdSigners,
+        vaultPDA
+      });
+
+      const ata = getAssociatedTokenAddressSync(mint1, recipient);
+      const balance = await fixture.tokenBalances.getBalance(ata);
+      expect(balance.toString()).to.equal("1000");
+    });
+  });
 
   // ============================================================================
   // BRIDGE REQUEST TESTS

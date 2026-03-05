@@ -10,6 +10,8 @@ import {
   getAssociatedTokenAddressSync
 } from "@solana/spl-token";
 
+import { TransactionMessage, VersionedTransaction } from "@solana/web3.js";
+
 // ============================================================================
 // CONSTANTS
 // ============================================================================
@@ -96,6 +98,22 @@ export function generateValidators(count: number): web3.Keypair[] {
     validators.push(anchor.web3.Keypair.generate());
   }
   return validators;
+}
+
+/**
+ * Airdrop SOL to an account
+ */
+export async function airdrop(
+  connection: web3.Connection,
+  publicKey: web3.PublicKey,
+  amount: number = 10 * web3.LAMPORTS_PER_SOL
+): Promise<void> {
+  const signature = await connection.requestAirdrop(publicKey, amount);
+  const latestBlockhash = await connection.getLatestBlockhash();
+  await connection.confirmTransaction({
+    signature,
+    ...latestBlockhash
+  });
 }
 
 /**
@@ -624,7 +642,7 @@ export class TokenRegistryHelper {
 /** Mirrors the on-chain TransferItem struct */
 export interface TransferItem {
   recipient: web3.PublicKey;
-  mintIndex: number;  // u8 — index into the mints array
+  mintIndex: number; // u8 — index into the mints array
   amount: BN;
 }
 
@@ -641,12 +659,42 @@ export interface BridgeTransactionParams {
  * Exposed so individual tests can corrupt a specific section.
  */
 export interface BridgeTxRemainingAccounts {
-  validatorMetas: { pubkey: web3.PublicKey; isSigner: boolean; isWritable: boolean }[];
-  mintMetas:      { pubkey: web3.PublicKey; isSigner: boolean; isWritable: boolean }[];
-  walletMetas:    { pubkey: web3.PublicKey; isSigner: boolean; isWritable: boolean }[];
-  registryMetas:  { pubkey: web3.PublicKey; isSigner: boolean; isWritable: boolean }[];
-  recipientAtaMetas: { pubkey: web3.PublicKey; isSigner: boolean; isWritable: boolean }[];
-  vaultAtaMetas:  { pubkey: web3.PublicKey; isSigner: boolean; isWritable: boolean }[];
+  validatorMetas: {
+    pubkey: web3.PublicKey;
+    isSigner: boolean;
+    isWritable: boolean;
+  }[];
+  mintMetas: {
+    pubkey: web3.PublicKey;
+    isSigner: boolean;
+    isWritable: boolean;
+  }[];
+  walletMetas: {
+    pubkey: web3.PublicKey;
+    isSigner: boolean;
+    isWritable: boolean;
+  }[];
+  registryMetas: {
+    pubkey: web3.PublicKey;
+    isSigner: boolean;
+    isWritable: boolean;
+  }[];
+  recipientAtaMetas: {
+    pubkey: web3.PublicKey;
+    isSigner: boolean;
+    isWritable: boolean;
+  }[];
+  vaultAtaMetas: {
+    pubkey: web3.PublicKey;
+    isSigner: boolean;
+    isWritable: boolean;
+  }[];
+}
+
+export interface V0CallResult {
+  signature: string;
+  wireSize: number; // full serialized tx (sigs + message)
+  messageSize: number; // message only — this is what counts against 1232
 }
 
 export class BridgeTransactionHelper {
@@ -672,54 +720,49 @@ export class BridgeTransactionHelper {
    * corrupt a section can call this, mutate one section, then
    * call sendWithSections() directly.
    */
-  buildSections(
-    params: BridgeTransactionParams
-  ): BridgeTxRemainingAccounts {
+  buildSections(params: BridgeTransactionParams): BridgeTxRemainingAccounts {
     const { transfers, mints, validators, vaultPDA } = params;
 
     // Section 1 — validator signers (isSigner = true)
     const validatorMetas = validators.map((v) => ({
       pubkey: v.publicKey,
       isSigner: true,
-      isWritable: false,
+      isWritable: false
     }));
 
     // Section 2 — mint accounts (read-only, parallel to mints[])
     const mintMetas = mints.map((m) => ({
       pubkey: m,
       isSigner: false,
-      isWritable: false,
+      isWritable: false
     }));
 
     // Section 3 — recipient wallets (one per transfer, read-only)
     const walletMetas = transfers.map((t) => ({
       pubkey: t.recipient,
       isSigner: false,
-      isWritable: false,
+      isWritable: false
     }));
 
     // Section 4 — token registry PDAs (one per mint, read-only)
     const registryMetas = mints.map((m) => ({
       pubkey: this.tokenRegistryPDA(m),
       isSigner: false,
-      isWritable: false,
+      isWritable: false
     }));
 
     // Section 5 — recipient ATAs (one per transfer, writable)
     const recipientAtaMetas = transfers.map((t) => ({
-      pubkey: getAssociatedTokenAddressSync(
-        mints[t.mintIndex],
-        t.recipient
-      ),
+      pubkey: getAssociatedTokenAddressSync(mints[t.mintIndex], t.recipient),
       isSigner: false,
-      isWritable: true,
+      isWritable: true
     }));
 
     // Section 6 — vault ATAs (one per unique mint, writable)
     const vaultAtaMetas = mints.map((m) => ({
       pubkey: getAssociatedTokenAddressSync(m, vaultPDA, true),
       isSigner: false,
-      isWritable: true,
+      isWritable: true
     }));
 
     return {
@@ -728,7 +771,7 @@ export class BridgeTransactionHelper {
       walletMetas,
       registryMetas,
       recipientAtaMetas,
-      vaultAtaMetas,
+      vaultAtaMetas
     };
   }
 
@@ -740,7 +783,7 @@ export class BridgeTransactionHelper {
       ...sections.walletMetas,
       ...sections.registryMetas,
       ...sections.recipientAtaMetas,
-      ...sections.vaultAtaMetas,
+      ...sections.vaultAtaMetas
     ];
   }
 
@@ -755,7 +798,7 @@ export class BridgeTransactionHelper {
     return transfers.map((t) => ({
       recipient: t.recipient,
       mintIndex: t.mintIndex,
-      amount: t.amount,
+      amount: t.amount
     }));
   }
 
@@ -778,11 +821,75 @@ export class BridgeTransactionHelper {
         batchIdBN
       )
       .accounts({
-        payer: this.owner.publicKey,
+        payer: this.owner.publicKey
       })
       .signers(params.validators)
       .remainingAccounts(remainingAccounts)
       .rpc();
+  }
+
+  async callV0(params: BridgeTransactionParams): Promise<V0CallResult> {
+    const connection = this.program.provider.connection;
+    const sections = this.buildSections(params);
+    const remainingAccounts = this.flattenSections(sections);
+        const batchIdBN =
+      typeof params.batchId === "number"
+        ? new BN(params.batchId)
+        : params.batchId;
+
+    // 1. Build the instruction WITHOUT sending (.instruction() not .rpc())
+    const ix = await this.program.methods
+      .bridgeTransaction(
+        this.serializeTransfers(params.transfers),
+        params.mints,
+        batchIdBN
+      )
+      .accounts({ payer: this.owner.publicKey })
+      .remainingAccounts(remainingAccounts)
+      // NOTE: no .signers() here — we sign manually below
+      .instruction();
+
+    // 2. Fresh blockhash
+    const { blockhash, lastValidBlockHeight } =
+      await connection.getLatestBlockhash();
+
+    // 3. Compile to V0 message (no Address Lookup Table — pure format change)
+    const messageV0 = new TransactionMessage({
+      payerKey: this.owner.publicKey,
+      recentBlockhash: blockhash,
+      instructions: [ix]
+    }).compileToV0Message(); // ← this is the only v0-specific line
+
+    // 4. Wrap in VersionedTransaction
+    const tx = new VersionedTransaction(messageV0);
+
+    // 5. Sign: payer first, then all validators
+    //    VersionedTransaction.sign() takes Keypair[] not Signer[]
+    tx.sign([
+      (this.owner as anchor.Wallet).payer, // payer keypair
+      ...params.validators // validator keypairs
+    ]);
+
+    // 6. Measure sizes BEFORE sending
+    const wireBytes = tx.serialize();
+    const messageBytes = tx.message.serialize();
+
+    // 7. Send raw
+    const signature = await connection.sendRawTransaction(wireBytes, {
+      skipPreflight: false
+    });
+
+    await connection.confirmTransaction({
+      signature,
+      blockhash,
+      lastValidBlockHeight
+    });
+
+    return {
+      signature,
+      wireSize: wireBytes.length, // sigs + message (informational)
+      messageSize: messageBytes.length // ← compare this against 1232
+    };
   }
 
   /**
@@ -796,21 +903,64 @@ export class BridgeTransactionHelper {
     validators: web3.Keypair[],
     sections: BridgeTxRemainingAccounts
   ): Promise<string> {
-    const batchIdBN =
-      typeof batchId === "number" ? new BN(batchId) : batchId;
+    const batchIdBN = typeof batchId === "number" ? new BN(batchId) : batchId;
 
     const remainingAccounts = this.flattenSections(sections);
 
     return await this.program.methods
+      .bridgeTransaction(this.serializeTransfers(transfers), mints, batchIdBN)
+      .accounts({ payer: this.owner.publicKey })
+      .signers(validators)
+      .remainingAccounts(remainingAccounts)
+      .rpc();
+  }
+  async callV0WithSections(
+    transfers: TransferItem[],
+    mints: web3.PublicKey[],
+    batchId: number | BN,
+    validators: web3.Keypair[],
+    sections: BridgeTxRemainingAccounts
+  ): Promise<V0CallResult> {
+    const connection = this.program.provider.connection;
+    const remainingAccounts = this.flattenSections(sections);
+    const batchIdBN = typeof batchId === "number" ? new BN(batchId) : batchId;
+    const ix = await this.program.methods
       .bridgeTransaction(
         this.serializeTransfers(transfers),
         mints,
         batchIdBN
       )
       .accounts({ payer: this.owner.publicKey })
-      .signers(validators)
       .remainingAccounts(remainingAccounts)
-      .rpc();
+      .instruction();
+
+    const { blockhash, lastValidBlockHeight } =
+      await connection.getLatestBlockhash();
+
+    const messageV0 = new TransactionMessage({
+      payerKey: this.owner.publicKey,
+      recentBlockhash: blockhash,
+      instructions: [ix]
+    }).compileToV0Message();
+
+    const tx = new VersionedTransaction(messageV0);
+    tx.sign([(this.owner as anchor.Wallet).payer, ...validators]);
+
+    const wireBytes = tx.serialize();
+    const messageBytes = tx.message.serialize();
+
+    const signature = await connection.sendRawTransaction(wireBytes);
+    await connection.confirmTransaction({
+      signature,
+      blockhash,
+      lastValidBlockHeight
+    });
+
+    return {
+      signature,
+      wireSize: wireBytes.length,
+      messageSize: messageBytes.length
+    };
   }
 
   /** Expect a specific Anchor error code */
@@ -846,7 +996,13 @@ export class BridgeTransactionHelper {
   ): Promise<void> {
     let thrown = false;
     try {
-      await this.callWithSections(transfers, mints, batchId, validators, sections);
+      await this.callWithSections(
+        transfers,
+        mints,
+        batchId,
+        validators,
+        sections
+      );
     } catch (e: any) {
       thrown = true;
       const code = e.error?.errorCode?.code ?? e.errorCode?.code;
