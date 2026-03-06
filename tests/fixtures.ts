@@ -974,8 +974,10 @@ export class BridgeTransactionHelper {
     } catch (e: any) {
       thrown = true;
       const code = e.error?.errorCode?.code ?? e.errorCode?.code;
+      const message = e.error?.errorMessage ?? e.message ?? "No error message";
       //console.log("Caught error code:", code);
-      
+      //console.log("Caught error message:", message);
+
       expect(code, `expected error ${expectedErrorCode}`).to.equal(
         expectedErrorCode
       );
