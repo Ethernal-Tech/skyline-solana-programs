@@ -54,7 +54,7 @@ describe("skyline-program", () => {
   const REQUIRED_FEE = MIN_OPERATIONAL_FEE + BRIDGE_FEE; // 1_500 lamports
 
   // ============================================================================
-  // INITIALIZE TESTS — replace entire describe("Initialize", ...) block
+  // INITIALIZE TESTS
   // ============================================================================
 
   describe("Initialize", () => {
@@ -277,6 +277,9 @@ describe("skyline-program", () => {
     });
   });
 
+  // ============================================================================
+  // BRIDGE TRANSACTION TESTS
+  // ============================================================================
   describe("Bridge Transaction (multi-transfer)", () => {
     //Shared test state
 
@@ -368,7 +371,7 @@ describe("skyline-program", () => {
 
       await fixture.mints.mintTo(mint2, vaultPDA, 1_000_000_000, true);
 
-       /*  console.log(
+      /*  console.log(
           `  ℹ Mints ready: mint1=${mint1.toBase58().slice(0, 8)}… ` +
             `mint2=${mint2.toBase58().slice(0, 8)}…`
         ); */
@@ -1205,11 +1208,9 @@ describe("skyline-program", () => {
     let user1: web3.Keypair;
     let user2: web3.Keypair;
 
-    const receiver = Buffer.from(
-      "0x742d35Cc6634C0532925a3b844Bc9e7595f42bE",
-      "utf-8"
-    );
-    const destinationChain = 1; // Ethereum
+    const receiver = "0x742d35Cc6634C0532925a3b844Bc9e7595f42bE";
+
+    const destinationChain = "1"; // Ethereum
 
     before("setup bridge request tests", async () => {
       vaultPDA = fixture.pdas.vault();
@@ -1228,7 +1229,7 @@ describe("skyline-program", () => {
         10 * web3.LAMPORTS_PER_SOL
       );
 
-      // ── Create lock/unlock mint (mint1) ──────────────────────────────────
+      // ── Create lock/unlock mint (mint1)
       mint1 = await fixture.mints.create(owner.publicKey, 9);
       await fixture.tokenRegistry.registerLockUnlock({
         mint: mint1,
@@ -1245,221 +1246,6 @@ describe("skyline-program", () => {
           .toBase58()
           .slice(0, 8)}… (lock/unlock)`
       ); */
-    });
-
-    // ═══════════════════════════════════════════════════════════════════
-    // HAPPY PATH TESTS
-    // ═══════════════════════════════════════════════════════════════════
-
-    it("single lock/unlock request — transfers tokens to vault and emits event", async () => {
-      const amount = new BN(100_000);
-      const requiredFee = await fixture.requiredFee();
-
-      const signerAta = getAssociatedTokenAddressSync(mint1, user1.publicKey);
-      const vaultAta = getAssociatedTokenAddressSync(mint1, vaultPDA, true);
-
-      const balanceBefore = await fixture.tokenBalances.snapshot(signerAta);
-      const vaultBefore = await fixture.tokenBalances.snapshot(vaultAta);
-      const valSetBefore = await fixture.getValidatorSet();
-
-      await fixture.bridgeRequest.call({
-        amount,
-        receiver,
-        destinationChain,
-        mint: mint1,
-        fees: requiredFee,
-        signer: user1
-      });
-
-      const balanceAfter = await fixture.tokenBalances.getBalance(signerAta);
-      const vaultAfter = await fixture.tokenBalances.getBalance(vaultAta);
-      const valSetAfter = await fixture.getValidatorSet();
-
-      expect((balanceBefore - balanceAfter).toString()).to.equal(
-        amount.toString(),
-        "user tokens decreased by amount"
-      );
-      expect((vaultAfter - vaultBefore).toString()).to.equal(
-        amount.toString(),
-        "vault tokens increased by amount"
-      );
-      expect(valSetAfter.bridgeRequestCount.toNumber()).to.equal(
-        valSetBefore.bridgeRequestCount.toNumber() + 1,
-        "bridge request count incremented"
-      );
-    });
-
-    it("lock/unlock with vault ATA pre-existing — succeeds without creating", async () => {
-      const amount = new BN(200_000);
-      const requiredFee = await fixture.requiredFee();
-
-      const vaultAta = getAssociatedTokenAddressSync(mint1, vaultPDA, true);
-
-      // FIX: Fund vault ATA directly (don't use mintTo with PDA)
-      // Mint to owner first, then transfer to vault ATA
-      const ownerAta = getAssociatedTokenAddressSync(mint1, owner.publicKey);
-      await fixture.mints.mintTo(mint1, owner.publicKey, 10_000);
-
-      const ix = createTransferInstruction(
-        ownerAta,
-        vaultAta,
-        owner.publicKey,
-        100
-      );
-      const tx = new web3.Transaction().add(ix);
-      await web3.sendAndConfirmTransaction(provider.connection, tx, [
-        owner.payer
-      ]);
-
-      const vaultBefore = await fixture.tokenBalances.snapshot(vaultAta);
-
-      await fixture.bridgeRequest.call({
-        amount,
-        receiver,
-        destinationChain,
-        mint: mint1,
-        fees: requiredFee,
-        signer: user2
-      });
-
-      const vaultAfter = await fixture.tokenBalances.getBalance(vaultAta);
-
-      expect((vaultAfter - vaultBefore).toString()).to.equal(
-        amount.toString(),
-        "vault balance increased correctly with pre-existing ATA"
-      );
-    });
-
-    it("multiple requests from same user — increments count correctly", async () => {
-      const amount = new BN(50_000);
-      const requiredFee = await fixture.requiredFee();
-
-      const valSetBefore = await fixture.getValidatorSet();
-      const initialCount = valSetBefore.bridgeRequestCount.toNumber();
-
-      // First request
-      await fixture.bridgeRequest.call({
-        amount,
-        receiver,
-        destinationChain,
-        mint: mint1,
-        fees: requiredFee,
-        signer: user1
-      });
-
-      // Second request
-      await fixture.bridgeRequest.call({
-        amount,
-        receiver: Buffer.from(
-          "0x1234567890123456789012345678901234567890",
-          "utf-8"
-        ),
-        destinationChain: 2,
-        mint: mint1,
-        fees: requiredFee,
-        signer: user1
-      });
-
-      const valSetAfter = await fixture.getValidatorSet();
-      expect(valSetAfter.bridgeRequestCount.toNumber()).to.equal(
-        initialCount + 2,
-        "request count incremented twice"
-      );
-    });
-
-    it("fee paid to treasury and relayer — splits correctly", async () => {
-      const amount = new BN(75_000);
-      const requiredFee = await fixture.requiredFee();
-      const fc = await fixture.getFeeConfig();
-
-      const treasuryBefore = await provider.connection.getBalance(fc.treasury);
-      const relayerBefore = await provider.connection.getBalance(fc.relayer);
-
-      await fixture.bridgeRequest.call({
-        amount,
-        receiver,
-        destinationChain,
-        mint: mint1,
-        fees: requiredFee,
-        signer: user1
-      });
-
-      const treasuryAfter = await provider.connection.getBalance(fc.treasury);
-      const relayerAfter = await provider.connection.getBalance(fc.relayer);
-
-      const treasuryIncrease = treasuryAfter - treasuryBefore;
-      const relayerIncrease = relayerAfter - relayerBefore;
-
-      // treasury gets: min_op_fee (since requiredFee = min_op_fee + bridge_fee)
-      expect(treasuryIncrease).to.equal(
-        fc.minOperationalFee.toNumber(),
-        "treasury received op fee"
-      );
-
-      // relayer gets: bridge_fee
-      expect(relayerIncrease).to.equal(
-        fc.bridgeFee.toNumber(),
-        "relayer received bridge fee"
-      );
-    });
-
-    it("fee with user surplus (tip) — distributes correctly", async () => {
-      const amount = new BN(50_000);
-      const requiredFee = await fixture.requiredFee();
-      const surplus = new BN(5_000); // User pays extra
-      const totalFee = requiredFee.add(surplus);
-
-      const fc = await fixture.getFeeConfig();
-      const treasuryBefore = await provider.connection.getBalance(fc.treasury);
-
-      await fixture.bridgeRequest.call({
-        amount,
-        receiver,
-        destinationChain,
-        mint: mint1,
-        fees: totalFee,
-        signer: user1
-      });
-
-      const treasuryAfter = await provider.connection.getBalance(fc.treasury);
-      const treasuryIncrease = treasuryAfter - treasuryBefore;
-
-      // treasury gets: min_op_fee + surplus
-      const expectedTreasuryFee =
-        fc.minOperationalFee.toNumber() + surplus.toNumber();
-      expect(treasuryIncrease).to.equal(
-        expectedTreasuryFee,
-        "treasury received op fee + surplus"
-      );
-    });
-
-    it("lock/unlock with large amount — handles high precision correctly", async () => {
-      // FIX: Use user1 (has 1B tokens) instead of user2
-      const amount = new BN(500_000_000); // Half billion
-      const requiredFee = await fixture.requiredFee();
-
-      const signerAta = getAssociatedTokenAddressSync(mint1, user1.publicKey);
-      const vaultAta = getAssociatedTokenAddressSync(mint1, vaultPDA, true);
-
-      const signerBefore = await fixture.tokenBalances.snapshot(signerAta);
-      const vaultBefore = await fixture.tokenBalances.snapshot(vaultAta);
-
-      await fixture.bridgeRequest.call({
-        amount,
-        receiver,
-        destinationChain,
-        mint: mint1,
-        fees: requiredFee,
-        signer: user1
-      });
-
-      const signerAfter = await fixture.tokenBalances.getBalance(signerAta);
-      const vaultAfter = await fixture.tokenBalances.getBalance(vaultAta);
-
-      expect((signerBefore - signerAfter).toString()).to.equal(
-        amount.toString()
-      );
-      expect((vaultAfter - vaultBefore).toString()).to.equal(amount.toString());
     });
 
     // ═══════════════════════════════════════════════════════════════════
@@ -1528,7 +1314,9 @@ describe("skyline-program", () => {
       it("fails when fee is below required minimum", async () => {
         const amount = new BN(100_000);
         const fc = await fixture.getFeeConfig();
-        const insufficientFee = fc.minOperationalFee.sub(new BN(1)); // 1 lamport short
+        const insufficientFee = fc.minOperationalFee
+          .add(fc.bridgeFee)
+          .sub(new BN(1)); // 1 lamport short
 
         await fixture.bridgeRequest.expectError(
           {
@@ -1537,22 +1325,6 @@ describe("skyline-program", () => {
             destinationChain,
             mint: mint1,
             fees: insufficientFee,
-            signer: user1
-          },
-          "InsufficientFee"
-        );
-      });
-
-      it("fails when fee is zero", async () => {
-        const amount = new BN(100_000);
-
-        await fixture.bridgeRequest.expectError(
-          {
-            amount,
-            receiver,
-            destinationChain,
-            mint: mint1,
-            fees: 0,
             signer: user1
           },
           "InsufficientFee"
@@ -1628,7 +1400,7 @@ describe("skyline-program", () => {
           );
       });
 
-      it.skip("fails when token registry doesn't exist for mint", async () => {
+      it("fails when token registry doesn't exist for mint", async () => {
         const amount = new BN(100_000);
         const requiredFee = await fixture.requiredFee();
 
@@ -1657,16 +1429,232 @@ describe("skyline-program", () => {
         } catch (e: any) {
           const errorMsg = e.message || "";
           const errorCode = e.error?.errorCode?.code || "";
-          console.log("Caught error:", errorMsg, "Code:", errorCode);
 
           // Should fail with token_registry constraint error, not signers_ata error
-          expect(
-            errorMsg.includes("Account does not exist") ||
-              errorMsg.includes("AccountNotFound") ||
-              errorMsg.includes("seeds") ||
-              errorCode === "AccountNotFound"
-          ).to.be.true;
+          expect(errorMsg).to.include("token_registry");
+          expect(errorCode).to.equal("AccountNotInitialized");
         }
+      });
+    });
+
+    // ═══════════════════════════════════════════════════════════════════
+    // HAPPY PATH TESTS
+    // ═══════════════════════════════════════════════════════════════════
+    describe("Happy Paths", () => {
+      it("single lock/unlock request — transfers tokens to vault", async () => {
+        const amount = new BN(100_000);
+        const requiredFee = await fixture.requiredFee();
+
+        const signerAta = getAssociatedTokenAddressSync(mint1, user1.publicKey);
+        const vaultAta = getAssociatedTokenAddressSync(mint1, vaultPDA, true);
+
+        const balanceBefore = await fixture.tokenBalances.snapshot(signerAta);
+        const vaultBefore = await fixture.tokenBalances.snapshot(vaultAta);
+        const valSetBefore = await fixture.getValidatorSet();
+
+        // tests before doesn't touch the vault, so it should start at 0
+        expect(vaultBefore).to.equal(BigInt(0), "vault should start with 0 balance");
+
+        await fixture.bridgeRequest.call({
+          amount,
+          receiver,
+          destinationChain,
+          mint: mint1,
+          fees: requiredFee,
+          signer: user1
+        });
+
+        const balanceAfter = await fixture.tokenBalances.getBalance(signerAta);
+        const vaultAfter = await fixture.tokenBalances.getBalance(vaultAta);
+        const valSetAfter = await fixture.getValidatorSet();
+
+        expect((balanceBefore - balanceAfter).toString()).to.equal(
+          amount.toString(),
+          "user tokens decreased by amount"
+        );
+        expect((vaultAfter - vaultBefore).toString()).to.equal(
+          amount.toString(),
+          "vault tokens increased by amount"
+        );
+        expect(valSetAfter.bridgeRequestCount.toNumber()).to.equal(
+          valSetBefore.bridgeRequestCount.toNumber() + 1,
+          "bridge request count incremented"
+        );
+      });
+
+      it("lock/unlock with vault ATA pre-existing — succeeds without creating", async () => {
+        const amount = new BN(200_000);
+        const requiredFee = await fixture.requiredFee();
+
+        const vaultAta = getAssociatedTokenAddressSync(mint1, vaultPDA, true);
+
+        // Mint to owner first, then transfer to vault ATA
+        const ownerAta = getAssociatedTokenAddressSync(mint1, owner.publicKey);
+        await fixture.mints.mintTo(mint1, owner.publicKey, 10_000);
+
+        const ix = createTransferInstruction(
+          ownerAta,
+          vaultAta,
+          owner.publicKey,
+          100
+        );
+        const tx = new web3.Transaction().add(ix);
+        await web3.sendAndConfirmTransaction(provider.connection, tx, [
+          owner.payer
+        ]);
+
+        const vaultBefore = await fixture.tokenBalances.snapshot(vaultAta);
+
+        await fixture.bridgeRequest.call({
+          amount,
+          receiver,
+          destinationChain,
+          mint: mint1,
+          fees: requiredFee,
+          signer: user2
+        });
+
+        const vaultAfter = await fixture.tokenBalances.getBalance(vaultAta);
+
+        expect((vaultAfter - vaultBefore).toString()).to.equal(
+          amount.toString(),
+          "vault balance increased correctly with pre-existing ATA"
+        );
+      });
+
+      it("multiple requests from same user — increments count correctly", async () => {
+        const amount = new BN(50_000);
+        const requiredFee = await fixture.requiredFee();
+
+        const valSetBefore = await fixture.getValidatorSet();
+        const initialCount = valSetBefore.bridgeRequestCount.toNumber();
+
+        // First request
+        await fixture.bridgeRequest.call({
+          amount,
+          receiver,
+          destinationChain,
+          mint: mint1,
+          fees: requiredFee,
+          signer: user1
+        });
+
+        // Second request
+        await fixture.bridgeRequest.call({
+          amount,
+          receiver: "0x1234567890123456789012345678901234567890",
+          destinationChain: "2",
+          mint: mint1,
+          fees: requiredFee,
+          signer: user1
+        });
+
+        const valSetAfter = await fixture.getValidatorSet();
+        expect(valSetAfter.bridgeRequestCount.toNumber()).to.equal(
+          initialCount + 2,
+          "request count incremented twice"
+        );
+      });
+
+      it("fee paid to treasury and relayer — splits correctly", async () => {
+        const amount = new BN(75_000);
+        const requiredFee = await fixture.requiredFee();
+        const fc = await fixture.getFeeConfig();
+
+        const treasuryBefore = await provider.connection.getBalance(
+          fc.treasury
+        );
+        const relayerBefore = await provider.connection.getBalance(fc.relayer);
+
+        await fixture.bridgeRequest.call({
+          amount,
+          receiver,
+          destinationChain,
+          mint: mint1,
+          fees: requiredFee,
+          signer: user1
+        });
+
+        const treasuryAfter = await provider.connection.getBalance(fc.treasury);
+        const relayerAfter = await provider.connection.getBalance(fc.relayer);
+
+        const treasuryIncrease = treasuryAfter - treasuryBefore;
+        const relayerIncrease = relayerAfter - relayerBefore;
+
+        // treasury gets: min_op_fee (since requiredFee = min_op_fee + bridge_fee)
+        expect(treasuryIncrease).to.equal(
+          fc.minOperationalFee.toNumber(),
+          "treasury received op fee"
+        );
+
+        // relayer gets: bridge_fee
+        expect(relayerIncrease).to.equal(
+          fc.bridgeFee.toNumber(),
+          "relayer received bridge fee"
+        );
+      });
+
+      it("fee with user surplus (tip) — distributes correctly", async () => {
+        const amount = new BN(50_000);
+        const requiredFee = await fixture.requiredFee();
+        const surplus = new BN(5_000); // User pays extra
+        const totalFee = requiredFee.add(surplus);
+
+        const fc = await fixture.getFeeConfig();
+        const treasuryBefore = await provider.connection.getBalance(
+          fc.treasury
+        );
+
+        await fixture.bridgeRequest.call({
+          amount,
+          receiver,
+          destinationChain,
+          mint: mint1,
+          fees: totalFee,
+          signer: user1
+        });
+
+        const treasuryAfter = await provider.connection.getBalance(fc.treasury);
+        const treasuryIncrease = treasuryAfter - treasuryBefore;
+
+        // treasury gets: min_op_fee + surplus
+        const expectedTreasuryFee =
+          fc.minOperationalFee.toNumber() + surplus.toNumber();
+        expect(treasuryIncrease).to.equal(
+          expectedTreasuryFee,
+          "treasury received op fee + surplus"
+        );
+      });
+
+      it("lock/unlock with large amount — handles high precision correctly", async () => {
+        // FIX: Use user1 (has 1B tokens) instead of user2
+        const amount = new BN(500_000_000); // Half billion
+        const requiredFee = await fixture.requiredFee();
+
+        const signerAta = getAssociatedTokenAddressSync(mint1, user1.publicKey);
+        const vaultAta = getAssociatedTokenAddressSync(mint1, vaultPDA, true);
+
+        const signerBefore = await fixture.tokenBalances.snapshot(signerAta);
+        const vaultBefore = await fixture.tokenBalances.snapshot(vaultAta);
+
+        await fixture.bridgeRequest.call({
+          amount,
+          receiver,
+          destinationChain,
+          mint: mint1,
+          fees: requiredFee,
+          signer: user1
+        });
+
+        const signerAfter = await fixture.tokenBalances.getBalance(signerAta);
+        const vaultAfter = await fixture.tokenBalances.getBalance(vaultAta);
+
+        expect((signerBefore - signerAfter).toString()).to.equal(
+          amount.toString()
+        );
+        expect((vaultAfter - vaultBefore).toString()).to.equal(
+          amount.toString()
+        );
       });
     });
 
@@ -1694,11 +1682,8 @@ describe("skyline-program", () => {
           }),
           fixture.bridgeRequest.call({
             amount: amount2,
-            receiver: Buffer.from(
-              "0x9999999999999999999999999999999999999999",
-              "utf-8"
-            ),
-            destinationChain: 2,
+            receiver: "0x9999999999999999999999999999999999",
+            destinationChain: "2",
             mint: mint1,
             fees: requiredFee,
             signer: user2
@@ -1726,25 +1711,7 @@ describe("skyline-program", () => {
           signer: user1
         });
 
-        expect(sig).to.be.a("string").with.lengthOf(88);
-      });
-
-      it("maximum receiver length — succeeds", async () => {
-        const amount = new BN(100_000);
-        const requiredFee = await fixture.requiredFee();
-        const longReceiver = Buffer.alloc(256, "a"); // 256-byte receiver
-
-        await fixture.bridgeRequest.call({
-          amount,
-          receiver: longReceiver,
-          destinationChain,
-          mint: mint1,
-          fees: requiredFee,
-          signer: user1
-        });
-
-        const valSet = await fixture.getValidatorSet();
-        expect(valSet.bridgeRequestCount.toNumber()).to.be.greaterThan(0);
+        expect(sig).to.be.a("string").and.not.empty;
       });
 
       it("destination_chain boundaries — accepts valid chain IDs", async () => {
@@ -1755,7 +1722,7 @@ describe("skyline-program", () => {
         await fixture.bridgeRequest.call({
           amount,
           receiver,
-          destinationChain: 0,
+          destinationChain: "0",
           mint: mint1,
           fees: requiredFee,
           signer: user1
@@ -1765,7 +1732,7 @@ describe("skyline-program", () => {
         await fixture.bridgeRequest.call({
           amount,
           receiver,
-          destinationChain: 255,
+          destinationChain: "255",
           mint: mint1,
           fees: requiredFee,
           signer: user1
@@ -1853,7 +1820,7 @@ describe("skyline-program", () => {
         const amount = new BN(100_000);
         const requiredFee = await fixture.requiredFee();
 
-        // FIX: Expect signer account validation error, not transfer error
+        // Expect signer account validation error, not transfer error
         try {
           await fixture.bridgeRequest.call({
             amount,

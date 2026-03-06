@@ -974,6 +974,8 @@ export class BridgeTransactionHelper {
     } catch (e: any) {
       thrown = true;
       const code = e.error?.errorCode?.code ?? e.errorCode?.code;
+      //console.log("Caught error code:", code);
+      
       expect(code, `expected error ${expectedErrorCode}`).to.equal(
         expectedErrorCode
       );
@@ -1150,8 +1152,8 @@ export class MintHelper {
 
 export interface BridgeRequestParams {
   amount: number | BN;
-  receiver: Buffer | Uint8Array;
-  destinationChain: number;
+  receiver: string;
+  destinationChain: string;
   mint: web3.PublicKey;
   fees: number | BN; // ← NEW: total SOL fee in lamports
   signer?: web3.Keypair; // Optional, defaults to owner
@@ -1239,9 +1241,9 @@ export class BridgeRequestHelper {
     return await this.program.methods
       .bridgeRequest(
         amountBN,
-        Buffer.from(params.receiver),
+        params.receiver,
         params.destinationChain,
-        feesBN // ← NEW arg
+        feesBN
       )
       .accountsPartial({
         signer: signer.publicKey,
@@ -1262,8 +1264,8 @@ export class BridgeRequestHelper {
    */
   async callWithCustomAccounts(
     amount: number | BN,
-    receiver: Buffer | Uint8Array,
-    destinationChain: number,
+    receiver: string,
+    destinationChain: string,
     accounts: {
       signer: web3.PublicKey;
       signersAta: web3.PublicKey;
@@ -1295,7 +1297,7 @@ export class BridgeRequestHelper {
     }
 
     return await this.program.methods
-      .bridgeRequest(amountBN, Buffer.from(receiver), destinationChain, feesBN)
+      .bridgeRequest(amountBN, receiver, destinationChain, feesBN)
       .accountsPartial({
         signer: accounts.signer,
         signersAta: accounts.signersAta,
