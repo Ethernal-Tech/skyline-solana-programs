@@ -111,8 +111,8 @@ pub mod skyline_program {
     pub fn bridge_request(
         ctx: Context<BridgeRequest>,
         amount: u64,
-        receiver: Vec<u8>,
-        destination_chain: u8,
+        receiver: String,
+        destination_chain: String,
         fees: u64,
     ) -> Result<()> {
         BridgeRequest::process_instruction(ctx, amount, receiver, destination_chain, fees)

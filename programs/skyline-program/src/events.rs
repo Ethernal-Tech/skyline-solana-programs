@@ -44,15 +44,12 @@ pub struct BridgeRequestEvent {
     pub sender: Pubkey,
     /// Amount of tokens to be bridged to the destination chain
     pub amount: u64,
-    /// Receiver's address on the destination chain (variable length byte vector)
-    /// This format accommodates various address formats across different blockchains
-    pub receiver: Vec<u8>,
-    /// Chain ID identifying the destination blockchain network
-    pub destination_chain: u8,
+    /// The recipient's address on the destination chain, encoded as a string.
+    pub receiver: String,
+    /// Identifier for the destination blockchain (e.g., "ethereum", "bsc", "polygon")
+    pub destination_chain: String,
     /// Public key of the token mint being bridged
     pub mint_token: Pubkey,
-    /// The batch request ID associated with this bridge request
-    pub batch_request_id: u64,
     /// The fee amount for the relayer to process this bridge request
     pub bridge_fee: u64,
     /// The operational fee for the bridge to maintain its operations

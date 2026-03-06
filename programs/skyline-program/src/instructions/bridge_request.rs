@@ -142,8 +142,8 @@ impl<'info> BridgeRequest<'info> {
     pub fn process_instruction(
         ctx: Context<BridgeRequest>,
         amount: u64,
-        receiver: Vec<u8>,
-        destination_chain: u8,
+        receiver: String,
+        destination_chain: String,
         fee: u64,
     ) -> Result<()> {
         let mint = &ctx.accounts.mint;
@@ -251,7 +251,6 @@ impl<'info> BridgeRequest<'info> {
             receiver,
             destination_chain,
             mint_token: mint.key(),
-            batch_request_id: validator_set.bridge_request_count,
             bridge_fee,
             operational_fee: op_fee,
         });
