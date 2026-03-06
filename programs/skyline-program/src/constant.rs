@@ -57,10 +57,13 @@ pub const VAULT_SEED: &[u8] = b"vault";
 pub const MAX_VALIDATORS_CHANGE: u32 = 10;
 
 /// Seed string used to derive FeeConfig PDA
+#[constant]
 pub const FEE_CONFIG_SEED: &[u8] = b"fee_config";
 
 /// Seed string used to derive TokenRegistry PDA
+#[constant]
 pub const TOKEN_REGISTRY_SEED: &[u8] = b"token_registry";
 
 /// Seed string used to derive TokenIdGuard PDA
+#[constant]
 pub const TOKEN_ID_GUARD_SEED: &[u8] = b"token_id_guard";
