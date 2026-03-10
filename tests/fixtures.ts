@@ -19,8 +19,6 @@ import { TransactionMessage, VersionedTransaction } from "@solana/web3.js";
 export const SEEDS = {
   VALIDATOR_SET: "validator-set",
   VAULT: "vault",
-  BRIDGING_TRANSACTION: "bridging_transaction",
-  VALIDATOR_SET_CHANGE: "validator_set_change",
   FEE_CONFIG: "fee_config",
   TOKEN_REGISTRY: "token_registry",
   TOKEN_ID_GUARD: "token_id_guard"
@@ -144,24 +142,6 @@ export class PDAs {
   vault(): web3.PublicKey {
     return web3.PublicKey.findProgramAddressSync(
       [Buffer.from(SEEDS.VAULT)],
-      this.programId
-    )[0];
-  }
-
-  bridgingTransaction(batchId: number | BN): web3.PublicKey {
-    const batchBN = typeof batchId === "number" ? new BN(batchId) : batchId;
-    const batchLe = batchBN.toArrayLike(Buffer, "le", 8);
-    return web3.PublicKey.findProgramAddressSync(
-      [Buffer.from(SEEDS.BRIDGING_TRANSACTION), batchLe],
-      this.programId
-    )[0];
-  }
-
-  validatorSetChange(batchId: number | BN): web3.PublicKey {
-    const batchBN = typeof batchId === "number" ? new BN(batchId) : batchId;
-    const batchLe = batchBN.toArrayLike(Buffer, "le", 8);
-    return web3.PublicKey.findProgramAddressSync(
-      [Buffer.from(SEEDS.VALIDATOR_SET_CHANGE), batchLe],
       this.programId
     )[0];
   }
@@ -832,7 +812,7 @@ export class BridgeTransactionHelper {
     const connection = this.program.provider.connection;
     const sections = this.buildSections(params);
     const remainingAccounts = this.flattenSections(sections);
-        const batchIdBN =
+    const batchIdBN =
       typeof params.batchId === "number"
         ? new BN(params.batchId)
         : params.batchId;
@@ -925,11 +905,7 @@ export class BridgeTransactionHelper {
     const remainingAccounts = this.flattenSections(sections);
     const batchIdBN = typeof batchId === "number" ? new BN(batchId) : batchId;
     const ix = await this.program.methods
-      .bridgeTransaction(
-        this.serializeTransfers(transfers),
-        mints,
-        batchIdBN
-      )
+      .bridgeTransaction(this.serializeTransfers(transfers), mints, batchIdBN)
       .accounts({ payer: this.owner.publicKey })
       .remainingAccounts(remainingAccounts)
       .instruction();
@@ -1241,12 +1217,7 @@ export class BridgeRequestHelper {
     const { treasury, relayer } = await this.resolveFeeAccounts();
 
     return await this.program.methods
-      .bridgeRequest(
-        amountBN,
-        params.receiver,
-        params.destinationChain,
-        feesBN
-      )
+      .bridgeRequest(amountBN, params.receiver, params.destinationChain, feesBN)
       .accountsPartial({
         signer: signer.publicKey,
         signersAta: signerAta,
@@ -1560,6 +1531,177 @@ export class EventParser {
 }
 
 // ============================================================================
+// INSTRUCTION HELPERS - BRIDGE VSU
+// ============================================================================
+
+export interface BridgeVSUParams {
+  added: web3.PublicKey[];
+  removed: web3.PublicKey[];
+  batchId: number | BN;
+  /** Keypairs that will sign as remaining_accounts validators */
+  signerKeypairs: web3.Keypair[];
+  /** Override the payer (defaults to owner) */
+  payerOverride?: web3.Keypair;
+}
+
+export class BridgeVSUHelper {
+  private program: Program<SkylineProgram>;
+  private owner: anchor.Wallet;
+
+  constructor(program: Program<SkylineProgram>, owner: anchor.Wallet) {
+    this.program = program;
+    this.owner = owner;
+  }
+
+  /**
+   * Build the remaining_accounts array: each signing validator is passed
+   * as isSigner=true, isWritable=false.
+   *
+   * Non-signing "witness" accounts can be passed separately via
+   * extraNonSignerAccounts if you need to test duplicate detection
+   * while keeping signers below threshold.
+   */
+  buildRemainingAccounts(
+    signerKeypairs: web3.Keypair[],
+    extraNonSignerAccounts: web3.PublicKey[] = []
+  ): { pubkey: web3.PublicKey; isSigner: boolean; isWritable: boolean }[] {
+    const signerMetas = signerKeypairs.map((kp) => ({
+      pubkey: kp.publicKey,
+      isSigner: true,
+      isWritable: false
+    }));
+    const extraMetas = extraNonSignerAccounts.map((pk) => ({
+      pubkey: pk,
+      isSigner: false,
+      isWritable: false
+    }));
+    return [...signerMetas, ...extraMetas];
+  }
+
+  /**
+   * Execute bridgeVsu instruction.
+   */
+  async call(params: BridgeVSUParams): Promise<string> {
+    const batchIdBN =
+      typeof params.batchId === "number"
+        ? new BN(params.batchId)
+        : params.batchId;
+
+    const payer = params.payerOverride ?? this.owner.payer;
+    const remainingAccounts = this.buildRemainingAccounts(
+      params.signerKeypairs
+    );
+
+    return await this.program.methods
+      .bridgeVsu(params.added, params.removed, batchIdBN)
+      .accounts({
+        payer: payer.publicKey
+      })
+      .signers(
+        params.payerOverride
+          ? [params.payerOverride, ...params.signerKeypairs]
+          : params.signerKeypairs
+      )
+      .remainingAccounts(remainingAccounts)
+      .rpc();
+  }
+
+  /**
+   * Execute with a raw remaining_accounts array.
+   * Used by error tests that need to inject non-signers, duplicates, etc.
+   */
+  async callRaw(
+    added: web3.PublicKey[],
+    removed: web3.PublicKey[],
+    batchId: number | BN,
+    signerKeypairs: web3.Keypair[],
+    remainingAccounts: {
+      pubkey: web3.PublicKey;
+      isSigner: boolean;
+      isWritable: boolean;
+    }[],
+    payerOverride?: web3.Keypair
+  ): Promise<string> {
+    const batchIdBN = typeof batchId === "number" ? new BN(batchId) : batchId;
+    const payer = payerOverride ?? this.owner.payer;
+
+    return await this.program.methods
+      .bridgeVsu(added, removed, batchIdBN)
+      .accounts({
+        payer: payer.publicKey
+      })
+      .signers(
+        payerOverride ? [payerOverride, ...signerKeypairs] : signerKeypairs
+      )
+      .remainingAccounts(remainingAccounts)
+      .rpc();
+  }
+
+  /**
+   * Expect a specific Anchor error code.
+   */
+  async expectError(
+    params: BridgeVSUParams,
+    expectedErrorCode: string
+  ): Promise<void> {
+    let thrown = false;
+    try {
+      await this.call(params);
+    } catch (e: any) {
+      thrown = true;
+      const code = e.error?.errorCode?.code ?? e.errorCode?.code;
+      expect(
+        code,
+        `expected error ${expectedErrorCode}, got ${code} — ${e.message}`
+      ).to.equal(expectedErrorCode);
+    }
+    if (!thrown) {
+      throw new Error(
+        `Expected bridgeVsu to fail with ${expectedErrorCode}, but it succeeded`
+      );
+    }
+  }
+
+  /**
+   * Expect error using raw remaining_accounts (for signer-level error tests).
+   */
+  async expectErrorRaw(
+    added: web3.PublicKey[],
+    removed: web3.PublicKey[],
+    batchId: number | BN,
+    signerKeypairs: web3.Keypair[],
+    remainingAccounts: {
+      pubkey: web3.PublicKey;
+      isSigner: boolean;
+      isWritable: boolean;
+    }[],
+    expectedErrorCode: string
+  ): Promise<void> {
+    let thrown = false;
+    try {
+      await this.callRaw(
+        added,
+        removed,
+        batchId,
+        signerKeypairs,
+        remainingAccounts
+      );
+    } catch (e: any) {
+      thrown = true;
+      const code = e.error?.errorCode?.code ?? e.errorCode?.code;
+      expect(code, `expected error ${expectedErrorCode}, got ${code}`).to.equal(
+        expectedErrorCode
+      );
+    }
+    if (!thrown) {
+      throw new Error(
+        `Expected bridgeVsu to fail with ${expectedErrorCode}, but it succeeded`
+      );
+    }
+  }
+}
+
+// ============================================================================
 // MAIN TEST FIXTURE CLASS
 // ============================================================================
 
@@ -1573,7 +1715,7 @@ export class SkylineTestFixture {
   public batchIds: BatchIdManager;
   public tokenBalances: TokenBalanceHelper;
   public events: EventParser;
-  //public bridgeVSU: BridgeVSUFixture;
+  public bridgeVSU: BridgeVSUHelper;
   public tokenRegistry: TokenRegistryHelper;
 
   constructor(ctx: TestContext) {
@@ -1594,6 +1736,7 @@ export class SkylineTestFixture {
     this.tokenBalances = new TokenBalanceHelper(ctx.connection);
     this.events = new EventParser(ctx.program, ctx.connection);
     this.tokenRegistry = new TokenRegistryHelper(ctx.program, ctx.owner);
+    this.bridgeVSU = new BridgeVSUHelper(ctx.program, ctx.owner);
   }
 
   /** Check if validator set is already initialized */

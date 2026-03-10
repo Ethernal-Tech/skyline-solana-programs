@@ -1731,4 +1731,1011 @@ describe("skyline-program", () => {
       });
     });
   });
+
+  // ============================================================================
+  // VALIDATOR SET UPDATE TESTS
+  // ============================================================================
+  describe("Bridge Validator Set Update", function () {
+    // ========================================================================
+    // The test suite runs AFTER the "initializes state correctly with 5
+    // validators" test which gives us:
+    //   validators[0..4]  — current set (5 validators, threshold = 4)
+    //   validators[5..]   — fresh keypairs available to be added
+    // ========================================================================
+
+    // Convenience: first 5 validators form the initial set
+    const INITIAL_COUNT = 5;
+
+    // Helper: pick the first `n` keypairs from validators[] as Keypair objects.
+    // validators[] is declared in the outer describe scope.
+    function currentValidators(n = INITIAL_COUNT): web3.Keypair[] {
+      return validators.slice(0, n);
+    }
+
+    // ========================================================================
+    // HAPPY PATH TESTS
+    // ========================================================================
+
+    describe("happy paths", function () {
+      it("adds a single new validator with threshold signers", async function () {
+        // State: 5 validators, threshold = 4
+        const batchId = await fixture.nextBatchId();
+        const vsBefore = await fixture.getValidatorSet();
+        const currentSigners = currentValidators();
+        const newValidator = validators[5]; // not yet in set
+
+        // Sign with exactly threshold (4) validators
+        const signers = currentSigners.slice(0, vsBefore.threshold);
+
+        await fixture.bridgeVSU.call({
+          added: [newValidator.publicKey],
+          removed: [],
+          batchId,
+          signerKeypairs: signers
+        });
+
+        const vsAfter = await fixture.getValidatorSet();
+        const expectedValidators = [
+          ...currentSigners.map((v) => v.publicKey),
+          newValidator.publicKey
+        ];
+        const expectedThreshold = calculateExpectedThreshold(
+          expectedValidators.length
+        );
+
+        assertValidatorSetState(vsAfter, {
+          validators: expectedValidators,
+          threshold: expectedThreshold,
+          lastBatchId: batchId,
+          bridgeRequestCount: vsBefore.bridgeRequestCount
+        });
+
+        console.log(
+          `  ✓ Added validator[5], set is now ${vsAfter.signers.length}, threshold=${vsAfter.threshold}`
+        );
+      });
+
+      it("removes a validator with all current signers", async function () {
+        // State: 6 validators (added validator[5] in previous test)
+        const batchId = await fixture.nextBatchId();
+        const vsBefore = await fixture.getValidatorSet();
+
+        // Remove validator[5] that was just added
+        const toRemove = validators[5].publicKey;
+
+        // All 6 current signers sign (> threshold)
+        const allCurrentSigners = validators
+          .slice(0, 6)
+          .filter((v) => !v.publicKey.equals(toRemove));
+
+        await fixture.bridgeVSU.call({
+          added: [],
+          removed: [toRemove],
+          batchId,
+          signerKeypairs: allCurrentSigners
+        });
+
+        const vsAfter = await fixture.getValidatorSet();
+        const expectedValidators = validators
+          .slice(0, 5)
+          .map((v) => v.publicKey);
+        const expectedThreshold = calculateExpectedThreshold(
+          expectedValidators.length
+        );
+
+        assertValidatorSetState(vsAfter, {
+          validators: expectedValidators,
+          threshold: expectedThreshold,
+          lastBatchId: batchId,
+          bridgeRequestCount: vsBefore.bridgeRequestCount
+        });
+
+        console.log(
+          `  ✓ Removed validator[5], set is back to ${vsAfter.signers.length}`
+        );
+      });
+
+      it("adds and removes in the same transaction (swap)", async function () {
+        // State: 5 validators [0..4], threshold = 4
+        const batchId = await fixture.nextBatchId();
+        const vsBefore = await fixture.getValidatorSet();
+
+        const toAdd = validators[6].publicKey; // fresh
+        const toRemove = validators[4].publicKey; // last in current set
+
+        // Sign with threshold (4) of the current validators
+        // validator[4] is being removed but can still sign (it's still in the
+        // set at validation time — removal happens at mutation phase)
+        const signers = validators.slice(0, vsBefore.threshold);
+
+        await fixture.bridgeVSU.call({
+          added: [toAdd],
+          removed: [toRemove],
+          batchId,
+          signerKeypairs: signers
+        });
+
+        const vsAfter = await fixture.getValidatorSet();
+        const expectedValidators = [
+          ...validators.slice(0, 4).map((v) => v.publicKey), // [0,1,2,3]
+          toAdd // [6]
+        ];
+        const expectedThreshold = calculateExpectedThreshold(
+          expectedValidators.length
+        );
+
+        assertValidatorSetState(vsAfter, {
+          validators: expectedValidators,
+          threshold: expectedThreshold,
+          lastBatchId: batchId,
+          bridgeRequestCount: vsBefore.bridgeRequestCount
+        });
+
+        console.log(
+          `  ✓ Swap: removed validators[4], added validators[6]. New threshold=${vsAfter.threshold}`
+        );
+      });
+
+      it("adds multiple validators at once", async function () {
+        // State: 5 validators [0,1,2,3,6], threshold = 4
+        const batchId = await fixture.nextBatchId();
+        const vsBefore = await fixture.getValidatorSet();
+
+        const toAdd = [validators[7].publicKey, validators[8].publicKey];
+        const signers = validators.slice(0, vsBefore.threshold);
+
+        await fixture.bridgeVSU.call({
+          added: toAdd,
+          removed: [],
+          batchId,
+          signerKeypairs: signers
+        });
+
+        const vsAfter = await fixture.getValidatorSet();
+
+        // Verify both were added
+        for (const pk of toAdd) {
+          expect(
+            vsAfter.signers.some((s) => s.equals(pk)),
+            `expected ${pk.toBase58()} to be in set`
+          ).to.be.true;
+        }
+
+        const expectedThreshold = calculateExpectedThreshold(
+          vsAfter.signers.length
+        );
+        expect(vsAfter.threshold).to.equal(expectedThreshold);
+        expect(vsAfter.lastBatchId.toNumber()).to.equal(batchId);
+
+        console.log(
+          `  ✓ Added 2 validators at once, set size=${vsAfter.signers.length}, threshold=${vsAfter.threshold}`
+        );
+      });
+
+      it("removes multiple validators at once", async function () {
+        // State: 7 validators [0,1,2,3,6,7,8]
+        const batchId = await fixture.nextBatchId();
+        const vsBefore = await fixture.getValidatorSet();
+
+        const toRemove = [validators[7].publicKey, validators[8].publicKey];
+        const signers = validators
+          .filter((v) => vsBefore.signers.some((s) => s.equals(v.publicKey)))
+          .slice(0, vsBefore.threshold);
+
+        await fixture.bridgeVSU.call({
+          added: [],
+          removed: toRemove,
+          batchId,
+          signerKeypairs: signers
+        });
+
+        const vsAfter = await fixture.getValidatorSet();
+
+        for (const pk of toRemove) {
+          expect(
+            vsAfter.signers.some((s) => s.equals(pk)),
+            `expected ${pk.toBase58()} to NOT be in set`
+          ).to.be.false;
+        }
+
+        console.log(
+          `  ✓ Removed 2 validators, set size=${vsAfter.signers.length}`
+        );
+      });
+
+      it("emits ValidatorSetUpdatedEvent with correct fields", async function () {
+        // State: 5 validators [0,1,2,3,6], threshold = 4
+        const batchId = await fixture.nextBatchId();
+        const vsBefore = await fixture.getValidatorSet();
+
+        const toAdd = validators[9].publicKey;
+        const signers = validators
+          .filter((v) => vsBefore.signers.some((s) => s.equals(v.publicKey)))
+          .slice(0, vsBefore.threshold);
+
+        const sig = await fixture.bridgeVSU.call({
+          added: [toAdd],
+          removed: [],
+          batchId,
+          signerKeypairs: signers
+        });
+
+        // Parse event
+        const event = await fixture.events.parseValidatorSetUpdatedEvent(sig);
+
+        expect(event, "event should not be null").to.not.be.null;
+        expect(event!.batchId.toNumber()).to.equal(batchId);
+        expect(event!.newSigners.some((s) => s.equals(toAdd))).to.be.true;
+
+        const expectedThreshold = calculateExpectedThreshold(
+          event!.newSigners.length
+        );
+        expect(event!.newThreshold).to.equal(expectedThreshold);
+
+        console.log(
+          `  ✓ Event emitted: batchId=${event!.batchId}, threshold=${
+            event!.newThreshold
+          }, signers=${event!.newSigners.length}`
+        );
+
+        // Cleanup: remove validators[9] to restore known state for later tests
+        const cleanupBatchId = await fixture.nextBatchId();
+        const vsAfterAdd = await fixture.getValidatorSet();
+        const cleanupSigners = validators
+          .filter((v) => vsAfterAdd.signers.some((s) => s.equals(v.publicKey)))
+          .slice(0, vsAfterAdd.threshold);
+
+        await fixture.bridgeVSU.call({
+          added: [],
+          removed: [toAdd],
+          batchId: cleanupBatchId,
+          signerKeypairs: cleanupSigners
+        });
+      });
+
+      it("last_batch_id is updated to the submitted batch_id", async function () {
+        const vsBefore = await fixture.getValidatorSet();
+        // Jump batch_id forward by 100 (must be strictly greater)
+        const jumpedBatchId = vsBefore.lastBatchId.toNumber() + 100;
+
+        const toAdd = validators[10].publicKey;
+        const signers = validators
+          .filter((v) => vsBefore.signers.some((s) => s.equals(v.publicKey)))
+          .slice(0, vsBefore.threshold);
+
+        await fixture.bridgeVSU.call({
+          added: [toAdd],
+          removed: [],
+          batchId: jumpedBatchId,
+          signerKeypairs: signers
+        });
+
+        const vsAfter = await fixture.getValidatorSet();
+        expect(vsAfter.lastBatchId.toNumber()).to.equal(jumpedBatchId);
+
+        // Cleanup
+        const cleanupBatchId = await fixture.nextBatchId();
+        const cleanupSigners = validators
+          .filter((v) => vsAfter.signers.some((s) => s.equals(v.publicKey)))
+          .slice(0, vsAfter.threshold);
+        await fixture.bridgeVSU.call({
+          added: [],
+          removed: [toAdd],
+          batchId: cleanupBatchId,
+          signerKeypairs: cleanupSigners
+        });
+      });
+
+      it("threshold recalculates correctly after add", async function () {
+        const vsBefore = await fixture.getValidatorSet();
+        const sizeBefore = vsBefore.signers.length;
+        const batchId = await fixture.nextBatchId();
+
+        const toAdd = validators[11].publicKey;
+        const signers = validators
+          .filter((v) => vsBefore.signers.some((s) => s.equals(v.publicKey)))
+          .slice(0, vsBefore.threshold);
+
+        await fixture.bridgeVSU.call({
+          added: [toAdd],
+          removed: [],
+          batchId,
+          signerKeypairs: signers
+        });
+
+        const vsAfter = await fixture.getValidatorSet();
+        const expectedThreshold = calculateExpectedThreshold(sizeBefore + 1);
+
+        expect(vsAfter.threshold).to.equal(expectedThreshold);
+        expect(vsAfter.signers.length).to.equal(sizeBefore + 1);
+
+        // Cleanup
+        const cleanupBatchId = await fixture.nextBatchId();
+        const cleanupSigners = validators
+          .filter((v) => vsAfter.signers.some((s) => s.equals(v.publicKey)))
+          .slice(0, vsAfter.threshold);
+        await fixture.bridgeVSU.call({
+          added: [],
+          removed: [toAdd],
+          batchId: cleanupBatchId,
+          signerKeypairs: cleanupSigners
+        });
+      });
+
+      it("works with more than threshold signers (surplus signers OK)", async function () {
+        const vsBefore = await fixture.getValidatorSet();
+        const batchId = await fixture.nextBatchId();
+
+        const toAdd = validators[12].publicKey;
+        // Pass ALL current validators as signers (not just threshold)
+        const allSigners = validators.filter((v) =>
+          vsBefore.signers.some((s) => s.equals(v.publicKey))
+        );
+
+        expect(allSigners.length).to.be.greaterThan(vsBefore.threshold);
+
+        await fixture.bridgeVSU.call({
+          added: [toAdd],
+          removed: [],
+          batchId,
+          signerKeypairs: allSigners
+        });
+
+        const vsAfter = await fixture.getValidatorSet();
+        expect(vsAfter.signers.some((s) => s.equals(toAdd))).to.be.true;
+
+        // Cleanup
+        const cleanupBatchId = await fixture.nextBatchId();
+        const vsClean = await fixture.getValidatorSet();
+        const cleanupSigners = validators
+          .filter((v) => vsClean.signers.some((s) => s.equals(v.publicKey)))
+          .slice(0, vsClean.threshold);
+        await fixture.bridgeVSU.call({
+          added: [],
+          removed: [toAdd],
+          batchId: cleanupBatchId,
+          signerKeypairs: cleanupSigners
+        });
+      });
+
+      it("sequential VSUs advance batch_id monotonically", async function () {
+        const vsStart = await fixture.getValidatorSet();
+        let currentSet = vsStart.signers.map(
+          (pk) => validators.find((v) => v.publicKey.equals(pk))!
+        );
+
+        for (let i = 0; i < 3; i++) {
+          const batchId = await fixture.nextBatchId();
+          const toAdd = validators[20 + i].publicKey;
+          const signers = currentSet.slice(
+            0,
+            calculateExpectedThreshold(currentSet.length)
+          );
+
+          await fixture.bridgeVSU.call({
+            added: [toAdd],
+            removed: [],
+            batchId,
+            signerKeypairs: signers
+          });
+
+          const vs = await fixture.getValidatorSet();
+          expect(vs.lastBatchId.toNumber()).to.equal(batchId);
+
+          // Add new validator keypair to currentSet for next iteration
+          currentSet = validators.filter((v) =>
+            vs.signers.some((s) => s.equals(v.publicKey))
+          );
+        }
+
+        // Cleanup: remove validators[20,21,22]
+        for (let i = 2; i >= 0; i--) {
+          const batchId = await fixture.nextBatchId();
+          const vs = await fixture.getValidatorSet();
+          const signers = validators
+            .filter((v) => vs.signers.some((s) => s.equals(v.publicKey)))
+            .slice(0, vs.threshold);
+          await fixture.bridgeVSU.call({
+            added: [],
+            removed: [validators[20 + i].publicKey],
+            batchId,
+            signerKeypairs: signers
+          });
+        }
+      });
+    });
+
+    // ========================================================================
+    // ERROR PATH TESTS
+    // ========================================================================
+
+    describe("error: InvalidBatchId", function () {
+      it("rejects batch_id equal to last_batch_id", async function () {
+        const vs = await fixture.getValidatorSet();
+        const staleBatchId = vs.lastBatchId.toNumber(); // not greater — equal
+
+        const signers = validators
+          .filter((v) => vs.signers.some((s) => s.equals(v.publicKey)))
+          .slice(0, vs.threshold);
+
+        await fixture.bridgeVSU.expectError(
+          {
+            added: [validators[30].publicKey],
+            removed: [],
+            batchId: staleBatchId,
+            signerKeypairs: signers
+          },
+          "InvalidBatchId"
+        );
+      });
+
+      it("rejects batch_id less than last_batch_id", async function () {
+        const vs = await fixture.getValidatorSet();
+        const staleBatchId = Math.max(0, vs.lastBatchId.toNumber() - 5);
+
+        const signers = validators
+          .filter((v) => vs.signers.some((s) => s.equals(v.publicKey)))
+          .slice(0, vs.threshold);
+
+        await fixture.bridgeVSU.expectError(
+          {
+            added: [validators[30].publicKey],
+            removed: [],
+            batchId: staleBatchId,
+            signerKeypairs: signers
+          },
+          "InvalidBatchId"
+        );
+      });
+
+      it("rejects batch_id = 0 when last_batch_id > 0", async function () {
+        const vs = await fixture.getValidatorSet();
+        // After all the happy path tests, last_batch_id > 0
+        expect(vs.lastBatchId.toNumber()).to.be.greaterThan(0);
+
+        const signers = validators
+          .filter((v) => vs.signers.some((s) => s.equals(v.publicKey)))
+          .slice(0, vs.threshold);
+
+        await fixture.bridgeVSU.expectError(
+          {
+            added: [validators[30].publicKey],
+            removed: [],
+            batchId: 0,
+            signerKeypairs: signers
+          },
+          "InvalidBatchId"
+        );
+      });
+    });
+
+    describe("error: DuplicateValidatorsInAdded", function () {
+      it("rejects added list with duplicate pubkeys", async function () {
+        const vs = await fixture.getValidatorSet();
+        const batchId = await fixture.nextBatchId();
+        const signers = validators
+          .filter((v) => vs.signers.some((s) => s.equals(v.publicKey)))
+          .slice(0, vs.threshold);
+
+        const duplicate = validators[30].publicKey;
+
+        await fixture.bridgeVSU.expectError(
+          {
+            added: [duplicate, duplicate], // same key twice
+            removed: [],
+            batchId,
+            signerKeypairs: signers
+          },
+          "DuplicateValidatorsInAdded"
+        );
+      });
+    });
+
+    describe("error: DuplicateValidatorsInRemoved", function () {
+      it("rejects removed list with duplicate pubkeys", async function () {
+        const vs = await fixture.getValidatorSet();
+        const batchId = await fixture.nextBatchId();
+        const signers = validators
+          .filter((v) => vs.signers.some((s) => s.equals(v.publicKey)))
+          .slice(0, vs.threshold);
+
+        // Pick a validator actually in the set
+        const inSetValidator = vs.signers[0];
+
+        await fixture.bridgeVSU.expectError(
+          {
+            added: [],
+            removed: [inSetValidator, inSetValidator], // same key twice
+            batchId,
+            signerKeypairs: signers
+          },
+          "DuplicateValidatorsInRemoved"
+        );
+      });
+    });
+
+    describe("error: AddingAndRemovingSameSigner", function () {
+      it("rejects when a pubkey appears in both added and removed", async function () {
+        const vs = await fixture.getValidatorSet();
+        const batchId = await fixture.nextBatchId();
+        const signers = validators
+          .filter((v) => vs.signers.some((s) => s.equals(v.publicKey)))
+          .slice(0, vs.threshold);
+
+        // Use a brand new key (not in set) — it can be in added,
+        // and we put the same key in removed to trigger the conflict check.
+        // Note: it won't pass RemovingNonExistentSigner — AddingAndRemovingSameSigner
+        // is checked first.
+        const conflictKey = validators[31].publicKey;
+
+        await fixture.bridgeVSU.expectError(
+          {
+            added: [conflictKey],
+            removed: [conflictKey],
+            batchId,
+            signerKeypairs: signers
+          },
+          "AddingAndRemovingSameSigner"
+        );
+      });
+
+      it("rejects overlap when adding existing set members to both lists", async function () {
+        const vs = await fixture.getValidatorSet();
+        const batchId = await fixture.nextBatchId();
+        const signers = validators
+          .filter((v) => vs.signers.some((s) => s.equals(v.publicKey)))
+          .slice(0, vs.threshold);
+
+        // An existing validator appears in both added and removed
+        const existingValidator = vs.signers[0];
+
+        await fixture.bridgeVSU.expectError(
+          {
+            added: [existingValidator],
+            removed: [existingValidator],
+            batchId,
+            signerKeypairs: signers
+          },
+          "AddingAndRemovingSameSigner"
+        );
+      });
+    });
+
+    describe("error: AddingExistingSigner", function () {
+      it("rejects adding a validator already in the set", async function () {
+        const vs = await fixture.getValidatorSet();
+        const batchId = await fixture.nextBatchId();
+        const signers = validators
+          .filter((v) => vs.signers.some((s) => s.equals(v.publicKey)))
+          .slice(0, vs.threshold);
+
+        const alreadyInSet = vs.signers[0];
+
+        await fixture.bridgeVSU.expectError(
+          {
+            added: [alreadyInSet],
+            removed: [],
+            batchId,
+            signerKeypairs: signers
+          },
+          "AddingExistingSigner"
+        );
+      });
+
+      it("rejects adding multiple validators when any one is already in set", async function () {
+        const vs = await fixture.getValidatorSet();
+        const batchId = await fixture.nextBatchId();
+        const signers = validators
+          .filter((v) => vs.signers.some((s) => s.equals(v.publicKey)))
+          .slice(0, vs.threshold);
+
+        const fresh = validators[32].publicKey; // not in set
+        const existing = vs.signers[1]; // in set
+
+        await fixture.bridgeVSU.expectError(
+          {
+            added: [fresh, existing],
+            removed: [],
+            batchId,
+            signerKeypairs: signers
+          },
+          "AddingExistingSigner"
+        );
+      });
+    });
+
+    describe("error: RemovingNonExistentSigner", function () {
+      it("rejects removing a validator not in the set", async function () {
+        const vs = await fixture.getValidatorSet();
+        const batchId = await fixture.nextBatchId();
+        const signers = validators
+          .filter((v) => vs.signers.some((s) => s.equals(v.publicKey)))
+          .slice(0, vs.threshold);
+
+        const notInSet = validators[33].publicKey;
+
+        await fixture.bridgeVSU.expectError(
+          {
+            added: [],
+            removed: [notInSet],
+            batchId,
+            signerKeypairs: signers
+          },
+          "RemovingNonExistentSigner"
+        );
+      });
+
+      it("rejects when one valid + one invalid removal are combined", async function () {
+        const vs = await fixture.getValidatorSet();
+        const batchId = await fixture.nextBatchId();
+        const signers = validators
+          .filter((v) => vs.signers.some((s) => s.equals(v.publicKey)))
+          .slice(0, vs.threshold);
+
+        const inSet = vs.signers[0];
+        const notInSet = validators[34].publicKey;
+
+        await fixture.bridgeVSU.expectError(
+          {
+            added: [],
+            removed: [inSet, notInSet],
+            batchId,
+            signerKeypairs: signers
+          },
+          "RemovingNonExistentSigner"
+        );
+      });
+    });
+
+    describe("error: MinValidatorsNotMet", function () {
+      it("rejects update that would drop below MIN_VALIDATORS (4)", async function () {
+        const vs = await fixture.getValidatorSet();
+        // Current set should be exactly 5 — remove 2 to go to 3 (below MIN=4)
+        expect(vs.signers.length).to.equal(
+          5,
+          "expected initial 5-validator set for this test"
+        );
+
+        const batchId = await fixture.nextBatchId();
+        const signers = validators
+          .filter((v) => vs.signers.some((s) => s.equals(v.publicKey)))
+          .slice(0, vs.threshold);
+
+        const toRemove = [vs.signers[0], vs.signers[1]]; // drops set to 3
+
+        await fixture.bridgeVSU.expectError(
+          {
+            added: [],
+            removed: toRemove,
+            batchId,
+            signerKeypairs: signers
+          },
+          "MinValidatorsNotMet"
+        );
+      });
+
+      it("rejects removing all validators when set is at minimum", async function () {
+        // This test works even if set is already at MIN (4 or 5 validators)
+        const vs = await fixture.getValidatorSet();
+        const batchId = await fixture.nextBatchId();
+        const signers = validators
+          .filter((v) => vs.signers.some((s) => s.equals(v.publicKey)))
+          .slice(0, vs.threshold);
+
+        // Remove enough to go below 4
+        const removeCount = vs.signers.length - LIMITS.MIN_VALIDATORS + 1;
+        const toRemove = vs.signers.slice(0, removeCount);
+
+        await fixture.bridgeVSU.expectError(
+          {
+            added: [],
+            removed: toRemove,
+            batchId,
+            signerKeypairs: signers
+          },
+          "MinValidatorsNotMet"
+        );
+      });
+    });
+
+    describe("error: NoSignersProvided", function () {
+      it("rejects when no remaining_accounts are provided", async function () {
+        const vs = await fixture.getValidatorSet();
+        const batchId = await fixture.nextBatchId();
+
+        // Pass empty remaining_accounts — no validator signers at all
+        await fixture.bridgeVSU.expectErrorRaw(
+          [validators[35].publicKey],
+          [],
+          batchId,
+          [], // no signerKeypairs
+          [], // empty remainingAccounts
+          "NoSignersProvided"
+        );
+      });
+
+      it("rejects when remaining_accounts are all non-signers", async function () {
+        const vs = await fixture.getValidatorSet();
+        const batchId = await fixture.nextBatchId();
+
+        // Pass validator accounts but mark them as non-signers
+        const nonSignerMetas = validators
+          .filter((v) => vs.signers.some((s) => s.equals(v.publicKey)))
+          .map((v) => ({
+            pubkey: v.publicKey,
+            isSigner: false, // ← NOT a signer
+            isWritable: false
+          }));
+
+        await fixture.bridgeVSU.expectErrorRaw(
+          [validators[35].publicKey],
+          [],
+          batchId,
+          [],
+          nonSignerMetas,
+          "NoSignersProvided"
+        );
+      });
+    });
+
+    describe("error: DuplicateSignersProvided", function () {
+      it("rejects when the same validator signs twice in remaining_accounts", async function () {
+        const vs = await fixture.getValidatorSet();
+        const batchId = await fixture.nextBatchId();
+
+        // Take a valid signer from the current set
+        const validSigner = validators.find((v) =>
+          vs.signers.some((s) => s.equals(v.publicKey))
+        )!;
+
+        // List the same keypair twice — on-chain this will see
+        // two entries with the same pubkey both marked isSigner=true
+        const duplicateSignerMetas = [
+          {
+            pubkey: validSigner.publicKey,
+            isSigner: true,
+            isWritable: false
+          },
+          {
+            pubkey: validSigner.publicKey,
+            isSigner: true,
+            isWritable: false
+          }
+        ];
+
+        await fixture.bridgeVSU.expectErrorRaw(
+          [validators[35].publicKey],
+          [],
+          batchId,
+          [validSigner, validSigner], // sign twice
+          duplicateSignerMetas,
+          "DuplicateSignersProvided"
+        );
+      });
+    });
+
+    describe("error: InvalidSigner", function () {
+      it("rejects when a signer is not in the current validator set", async function () {
+        const vs = await fixture.getValidatorSet();
+        const batchId = await fixture.nextBatchId();
+
+        // A fresh keypair — not in the set
+        const outsider = web3.Keypair.generate();
+        await airdrop(provider.connection, outsider.publicKey);
+
+        // Build remaining_accounts with one valid signer + the outsider
+        const validSigner = validators.find((v) =>
+          vs.signers.some((s) => s.equals(v.publicKey))
+        )!;
+
+        const remainingAccounts = [
+          {
+            pubkey: validSigner.publicKey,
+            isSigner: true,
+            isWritable: false
+          },
+          {
+            pubkey: outsider.publicKey,
+            isSigner: true,
+            isWritable: false
+          }
+        ];
+
+        await fixture.bridgeVSU.expectErrorRaw(
+          [validators[35].publicKey],
+          [],
+          batchId,
+          [validSigner, outsider],
+          remainingAccounts,
+          "InvalidSigner"
+        );
+      });
+
+      it("rejects when ALL signers are outsiders", async function () {
+        const vs = await fixture.getValidatorSet();
+        const batchId = await fixture.nextBatchId();
+
+        const outsiders = [
+          web3.Keypair.generate(),
+          web3.Keypair.generate(),
+          web3.Keypair.generate(),
+          web3.Keypair.generate()
+        ];
+
+        for (const o of outsiders) {
+          await airdrop(provider.connection, o.publicKey);
+        }
+
+        const remainingAccounts = outsiders.map((o) => ({
+          pubkey: o.publicKey,
+          isSigner: true,
+          isWritable: false
+        }));
+
+        await fixture.bridgeVSU.expectErrorRaw(
+          [validators[35].publicKey],
+          [],
+          batchId,
+          outsiders,
+          remainingAccounts,
+          "InvalidSigner"
+        );
+      });
+    });
+
+    describe("error: InsufficientSigners", function () {
+      it("rejects when one fewer than threshold signers are provided", async function () {
+        const vs = await fixture.getValidatorSet();
+        const batchId = await fixture.nextBatchId();
+        const threshold = vs.threshold;
+
+        // Sign with (threshold - 1) validators
+        const insufficientSigners = validators
+          .filter((v) => vs.signers.some((s) => s.equals(v.publicKey)))
+          .slice(0, threshold - 1);
+
+        expect(insufficientSigners.length).to.equal(threshold - 1);
+
+        await fixture.bridgeVSU.expectError(
+          {
+            added: [validators[36].publicKey],
+            removed: [],
+            batchId,
+            signerKeypairs: insufficientSigners
+          },
+          "InsufficientSigners"
+        );
+      });
+
+      it("rejects when only a single signer provided and threshold > 1", async function () {
+        const vs = await fixture.getValidatorSet();
+        const batchId = await fixture.nextBatchId();
+
+        expect(vs.threshold).to.be.greaterThan(
+          1,
+          "this test requires threshold > 1"
+        );
+
+        const singleSigner = validators.find((v) =>
+          vs.signers.some((s) => s.equals(v.publicKey))
+        )!;
+
+        await fixture.bridgeVSU.expectError(
+          {
+            added: [validators[37].publicKey],
+            removed: [],
+            batchId,
+            signerKeypairs: [singleSigner]
+          },
+          "InsufficientSigners"
+        );
+      });
+
+      it("rejects when exactly threshold-1 signers for a remove operation", async function () {
+        const vs = await fixture.getValidatorSet();
+        const batchId = await fixture.nextBatchId();
+        const threshold = vs.threshold;
+
+        const insufficientSigners = validators
+          .filter((v) => vs.signers.some((s) => s.equals(v.publicKey)))
+          .slice(0, threshold - 1);
+
+        await fixture.bridgeVSU.expectError(
+          {
+            added: [],
+            removed: [vs.signers[0]],
+            batchId,
+            signerKeypairs: insufficientSigners
+          },
+          "InsufficientSigners"
+        );
+      });
+    });
+
+    // ========================================================================
+    // EDGE CASE / BOUNDARY TESTS
+    // ========================================================================
+
+    describe("edge cases", function () {
+      it("threshold=4 for 5-validator set (formula verification)", function () {
+        // Formula: n - floor((n-1)/3)
+        // n=5: 5 - floor(4/3) = 5 - 1 = 4
+        expect(calculateExpectedThreshold(5)).to.equal(4);
+      });
+
+      it("threshold=3 for 4-validator set (minimum)", function () {
+        // n=4: 4 - floor(3/3) = 4 - 1 = 3
+        expect(calculateExpectedThreshold(4)).to.equal(3);
+      });
+
+      it("threshold formula holds for various sizes", function () {
+        const cases: [number, number][] = [
+          [4, 3],
+          [5, 4],
+          [6, 5],
+          [7, 5],
+          [10, 7],
+          [13, 9],
+          [20, 14]
+        ];
+        for (const [n, expectedT] of cases) {
+          expect(calculateExpectedThreshold(n), `threshold(${n})`).to.equal(
+            expectedT
+          );
+        }
+      });
+
+      it("no-op update (empty added and removed) with sufficient signers succeeds", async function () {
+        // The instruction doesn't explicitly block this.
+        // min/max validator checks pass since size stays the same.
+        // This is a valid "heartbeat" batch_id advance.
+        const vs = await fixture.getValidatorSet();
+        const batchId = await fixture.nextBatchId();
+        const signers = validators
+          .filter((v) => vs.signers.some((s) => s.equals(v.publicKey)))
+          .slice(0, vs.threshold);
+
+        await fixture.bridgeVSU.call({
+          added: [],
+          removed: [],
+          batchId,
+          signerKeypairs: signers
+        });
+
+        const vsAfter = await fixture.getValidatorSet();
+        // Validator set unchanged, only batch_id advances
+        assertValidatorSetState(vsAfter, {
+          validators: vs.signers,
+          threshold: vs.threshold,
+          lastBatchId: batchId,
+          bridgeRequestCount: vs.bridgeRequestCount
+        });
+
+        console.log("  ✓ No-op update advanced last_batch_id to", batchId);
+      });
+
+      it("bridgeRequestCount is not modified by bridge_vsu", async function () {
+        const vsBefore = await fixture.getValidatorSet();
+        const requestCountBefore = vsBefore.bridgeRequestCount;
+        const batchId = await fixture.nextBatchId();
+
+        const signers = validators
+          .filter((v) => vsBefore.signers.some((s) => s.equals(v.publicKey)))
+          .slice(0, vsBefore.threshold);
+
+        await fixture.bridgeVSU.call({
+          added: [],
+          removed: [],
+          batchId,
+          signerKeypairs: signers
+        });
+
+        const vsAfter = await fixture.getValidatorSet();
+        expect(vsAfter.bridgeRequestCount.toString()).to.equal(
+          requestCountBefore.toString(),
+          "bridgeRequestCount must not change"
+        );
+      });
+    });
+  });
 });
