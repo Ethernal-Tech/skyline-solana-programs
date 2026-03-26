@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - develop
+      - fix/new-version
   pull_request:
     branches:
       - main

@@ -10,11 +10,12 @@ It installs:
 - Node.js 20 LTS + Yarn
 - Anchor CLI v0.32.1
 
-It then compiles the program and produces two artifacts:
+It then compiles the program and produces artifacts:
 - `target/deploy/skyline_program.so` — compiled program binary
 - `target/deploy/skyline_program-keypair.json` — program keypair (fixed Program ID)
+- `target/idl/skyline_program.json` — Anchor IDL
 
-> The `keypairs/skyline_program-keypair.json` is copied into the build to ensure
+> The `program_build/skyline_program-keypair.json` is copied into the build to ensure
 > the Program ID stays consistent across all builds.
 
 ---
@@ -22,7 +23,7 @@ It then compiles the program and produces two artifacts:
 ## Prerequisites
 
 - [Docker](https://docs.docker.com/get-docker/) installed and running
-- `keypairs/skyline_program-keypair.json` present in the project root
+- `program_build/skyline_program-keypair.json` present in the project root
 
 ---
 
@@ -37,7 +38,7 @@ It then compiles the program and produces two artifacts:
 ├── rust-toolchain.toml
 ├── package.json
 ├── yarn.lock
-├── keypairs/
+├── program_build/
 │   └── skyline_program-keypair.json   ← fixed Program ID keypair
 └── programs/
     └── skyline_program/
@@ -53,49 +54,30 @@ It then compiles the program and produces two artifacts:
 ### 1. Build the Docker Image
 
 ```bash
-docker build -t solana-program-builder .
+docker build -f dockerfile -t solana-program-builder .
 ```
 
 > First build takes ~15–20 min (compiles Rust toolchain + Anchor CLI).
 > Subsequent builds are faster due to Docker layer caching.
 
-### 2. Verify the Build
+### 2. Export Artifacts to `program_build`
 
 ```bash
-# List compiled artifacts inside the container
-docker run --rm solana-program-builder ls -lh /app/target/deploy/
-
-# Print the Program ID
-docker run --rm solana-program-builder \
-    solana-keygen pubkey target/deploy/skyline_program-keypair.json
+# Runs container and automatically copies:
+# - skyline_program-keypair.json
+# - skyline_program.json
+# - skyline_program.so
+# into ./program_build on your machine
+docker run --rm \
+  -v "$(pwd)/program_build:/artifacts" \
+  solana-program-builder
 ```
 
-### 3. Extract Artifacts to Local Machine
+### 3. Verify Exported Files
 
 ```bash
-# Create a temporary container
-docker create --name skyline-extract solana-program-builder
-
-# Copy compiled program binary
-docker cp skyline-extract:/app/target/deploy/skyline_program.so \
-    ./target/deploy/skyline_program.so
-
-# Copy IDL file
-docker cp skyline-extract:/app/target/idl/skyline_program.json \
-    ./target/idl/skyline_program.json
-
-# Copy keypair
-docker cp skyline-extract:/app/target/deploy/skyline_program-keypair.json \
-    ./target/deploy/skyline_program-keypair.json
-
-# Clean up
-docker rm skyline-extract
-```
-
-### 4. Interactive Shell
-
-```bash
-docker run --rm -it solana-program-builder bash
+ls -lh ./program_build/
+solana-keygen pubkey ./program_build/skyline_program-keypair.json
 ```
 
 ---

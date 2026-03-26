@@ -3,6 +3,7 @@ import * as anchor from "@coral-xyz/anchor";
 import { Program, web3, BN } from "@coral-xyz/anchor";
 import { SkylineProgram } from "../target/types/skyline_program";
 import { expect } from "chai";
+import { createHash } from "crypto";
 import {
   createMint,
   getOrCreateAssociatedTokenAccount,
@@ -93,7 +94,11 @@ export interface TokenRegistryData {
 export function generateValidators(count: number): web3.Keypair[] {
   const validators: web3.Keypair[] = [];
   for (let i = 0; i < count; i++) {
-    validators.push(anchor.web3.Keypair.generate());
+    const seed = createHash("sha256")
+      .update(`skyline-validator-${i}`)
+      .digest()
+      .subarray(0, 32);
+    validators.push(anchor.web3.Keypair.fromSeed(seed));
   }
   return validators;
 }

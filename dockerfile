@@ -86,3 +86,10 @@ RUN anchor build
 # Artifacts at:
 #   /app/target/deploy/skyline_program.so
 #   /app/target/deploy/skyline_program-keypair.json
+#   /app/target/idl/skyline_program.json
+
+# ── Runtime export directory (mount from host as /artifacts) ─────────────────
+RUN mkdir -p /artifacts
+
+# ── Default runtime: export build artifacts to mounted /artifacts ─────────────
+CMD ["sh", "-c", "set -e; cp /app/target/deploy/skyline_program-keypair.json /artifacts/; cp /app/target/deploy/skyline_program.so /artifacts/; cp /app/target/idl/skyline_program.json /artifacts/; echo 'Exported artifacts to /artifacts'"]

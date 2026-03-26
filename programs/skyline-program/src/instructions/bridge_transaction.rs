@@ -32,6 +32,9 @@ use anchor_spl::{
     associated_token::{self, get_associated_token_address, AssociatedToken},
     token::{self, transfer_checked, Mint, Token, TransferChecked},
 };
+use anchor_lang::solana_program::{
+    sysvar::instructions::{load_current_index_checked, load_instruction_at_checked},
+};
 
 use crate::*;
 
@@ -89,6 +92,11 @@ pub struct BridgeTransaction<'info> {
 
     /// Associated token program — required for ATA creation CPIs.
     pub associated_token_program: Program<'info, AssociatedToken>,
+
+    /// Instructions sysvar used to read and validate the preceding ed25519 ix.
+    /// CHECK: Address-constrained to the instructions sysvar.
+    #[account(address = anchor_lang::solana_program::sysvar::instructions::ID)]
+    pub instructions: UncheckedAccount<'info>,
 }
 
 impl<'info> BridgeTransaction<'info> {
@@ -139,8 +147,9 @@ impl<'info> BridgeTransaction<'info> {
     ) -> Result<()> {
         // ── 1. Validate transfer count and mint list bounds ──────────────────────
 
+        require!(!transfers.is_empty(), CustomError::InvalidTransferCount);
         require!(
-            !transfers.is_empty(),
+            transfers.len() <= MAX_TRANSFERS,
             CustomError::InvalidTransferCount
         );
 
@@ -175,22 +184,19 @@ impl<'info> BridgeTransaction<'info> {
         // Validators come first and are detected by is_signer.
         // All other section sizes are derived from mints/transfers counts.
 
-        let num_mints     = mints.len();
+        let num_mints = mints.len();
         let num_transfers = transfers.len();
 
-        let num_validators = ctx
-            .remaining_accounts
-            .iter()
-            .filter(|a| a.is_signer)
-            .count();
+        // Validator pubkeys are sourced from the preceding ed25519 instruction.
+        let message = batch_id.to_le_bytes();
+        let pubkeys = verify_ed25519_batch(&ctx.accounts.instructions.to_account_info(), &message)?;
 
-        let validators_start  = 0;
-        let mints_start       = validators_start  + num_validators;
-        let wallets_start     = mints_start       + num_mints;
-        let registries_start  = wallets_start     + num_transfers;
-        let atas_start        = registries_start  + num_mints;
-        let vault_atas_start  = atas_start        + num_transfers;
-        let expected_total    = vault_atas_start  + num_mints;
+        let mints_start = 0;
+        let wallets_start = mints_start + num_mints;
+        let registries_start = wallets_start + num_transfers;
+        let atas_start = registries_start + num_mints;
+        let vault_atas_start = atas_start + num_transfers;
+        let expected_total = vault_atas_start + num_mints;
 
         require!(
             ctx.remaining_accounts.len() == expected_total,
@@ -199,12 +205,11 @@ impl<'info> BridgeTransaction<'info> {
 
         // ── 4. Slice remaining_accounts into typed sections ──────────────────────
 
-        let validator_accounts   = &ctx.remaining_accounts[validators_start..mints_start];
-        let mint_accounts        = &ctx.remaining_accounts[mints_start..wallets_start];
-        let wallet_accounts      = &ctx.remaining_accounts[wallets_start..registries_start];
-        let registry_accounts    = &ctx.remaining_accounts[registries_start..atas_start];
+        let mint_accounts = &ctx.remaining_accounts[mints_start..wallets_start];
+        let wallet_accounts = &ctx.remaining_accounts[wallets_start..registries_start];
+        let registry_accounts = &ctx.remaining_accounts[registries_start..atas_start];
         let recipient_ata_accounts = &ctx.remaining_accounts[atas_start..vault_atas_start];
-        let vault_ata_accounts   = &ctx.remaining_accounts[vault_atas_start..expected_total];
+        let vault_ata_accounts = &ctx.remaining_accounts[vault_atas_start..expected_total];
 
         // ── 5. Validate mint accounts match the `mints` instruction arg ──────────
         //
@@ -212,47 +217,31 @@ impl<'info> BridgeTransaction<'info> {
         // or substituting a different mint than what the transfers reference.
 
         for (i, mint_account) in mint_accounts.iter().enumerate() {
-            require!(
-                mint_account.key() == mints[i],
-                CustomError::InvalidMintList
-            );
+            require!(mint_account.key() == mints[i], CustomError::InvalidMintList);
         }
 
         // ── 6. Validate validator signers and check threshold ────────────────────
 
         let validator_set = &mut ctx.accounts.validator_set;
 
-        // All accounts in the validator section must be signers
-        // (is_signer was already used to count num_validators above,
-        //  but we re-check here scoped to just the validator slice)
-        let signer_keys: Vec<Pubkey> = validator_accounts
-            .iter()
-            .filter(|a| a.is_signer)
-            .map(|a| a.key())
-            .collect();
-
-        require!(!signer_keys.is_empty(), CustomError::NoSignersProvided);
-
-        // Deduplication check — sort + dedup is O(n log n), fine for ≤ ~20 validators
-        let mut sorted_keys = signer_keys.clone();
+        // 1. Dedup
+        let mut sorted_keys = pubkeys.clone();
         sorted_keys.sort();
         sorted_keys.dedup();
         require!(
-            signer_keys.len() == sorted_keys.len(),
+            sorted_keys.len() == pubkeys.len(),
             CustomError::DuplicateSignersProvided
         );
 
-        // Every signer must be a registered validator in the current set
+        // 2. Validator membership
         require!(
-            signer_keys
-                .iter()
-                .all(|k| validator_set.signers.contains(k)),
+            pubkeys.iter().all(|k| validator_set.signers.contains(k)),
             CustomError::InvalidSigner
         );
 
-        // Must meet or exceed the consensus threshold
+        // 3. Threshold
         require!(
-            (signer_keys.len() as u8) >= validator_set.threshold,
+            (pubkeys.len() as u8) >= validator_set.threshold,
             CustomError::InsufficientSigners
         );
 
@@ -288,25 +277,30 @@ impl<'info> BridgeTransaction<'info> {
 
         // ── 8. Execute each transfer ─────────────────────────────────────────────
 
-        let vault          = &ctx.accounts.vault;
-        let payer          = &ctx.accounts.payer;
-        let token_program  = &ctx.accounts.token_program;
-        let assoc_program  = &ctx.accounts.associated_token_program;
+        let vault = &ctx.accounts.vault;
+        let payer = &ctx.accounts.payer;
+        let token_program = &ctx.accounts.token_program;
+        let assoc_program = &ctx.accounts.associated_token_program;
         let system_program = &ctx.accounts.system_program;
 
         // Vault signs all CPIs — build its signer seeds once
         let vault_bump_slice = &[vault.bump];
-        let seeds            = &[VAULT_SEED, vault_bump_slice as &[u8]];
-        let signer_seeds     = &[&seeds[..]];
+        let seeds = &[VAULT_SEED, vault_bump_slice as &[u8]];
+        let signer_seeds = &[&seeds[..]];
 
         for (i, item) in transfers.iter().enumerate() {
             let mint_index = item.mint_index as usize;
 
-            let mint_account           = &mint_accounts[mint_index];
-            let wallet_account         = &wallet_accounts[i];
-            let registry               = &token_registries[mint_index];
-            let recipient_ata_account  = &recipient_ata_accounts[i];       // indexed by transfer
-            let vault_ata_account      = &vault_ata_accounts[mint_index];  // indexed by mint
+            let mint_account = &mint_accounts[mint_index];
+            let wallet_account = &wallet_accounts[i];
+            let registry = &token_registries[mint_index];
+            let recipient_ata_account = &recipient_ata_accounts[i]; // indexed by transfer
+            let vault_ata_account = &vault_ata_accounts[mint_index]; // indexed by mint
+
+            require!(
+                wallet_account.key() == item.recipient,
+                CustomError::InvalidRemainingAccounts
+            );
 
             // ── 8a. Validate ATA addresses ───────────────────────────────────────
             //
@@ -339,12 +333,12 @@ impl<'info> BridgeTransaction<'info> {
                 associated_token::create(CpiContext::new(
                     assoc_program.to_account_info(),
                     associated_token::Create {
-                        payer:            payer.to_account_info(),
+                        payer: payer.to_account_info(),
                         associated_token: recipient_ata_account.to_account_info(),
-                        authority:        wallet_account.to_account_info(),
-                        mint:             mint_account.to_account_info(),
-                        system_program:   system_program.to_account_info(),
-                        token_program:    token_program.to_account_info(),
+                        authority: wallet_account.to_account_info(),
+                        mint: mint_account.to_account_info(),
+                        system_program: system_program.to_account_info(),
+                        token_program: token_program.to_account_info(),
                     },
                 ))?;
             }
@@ -360,8 +354,8 @@ impl<'info> BridgeTransaction<'info> {
                     CpiContext::new_with_signer(
                         token_program.to_account_info(),
                         token::MintTo {
-                            mint:      mint_account.to_account_info(),
-                            to:        recipient_ata_account.to_account_info(),
+                            mint: mint_account.to_account_info(),
+                            to: recipient_ata_account.to_account_info(),
                             authority: vault.to_account_info(),
                         },
                         signer_seeds,
@@ -379,10 +373,10 @@ impl<'info> BridgeTransaction<'info> {
                     CpiContext::new_with_signer(
                         token_program.to_account_info(),
                         TransferChecked {
-                            from:      vault_ata_account.to_account_info(),
-                            to:        recipient_ata_account.to_account_info(),
+                            from: vault_ata_account.to_account_info(),
+                            to: recipient_ata_account.to_account_info(),
                             authority: vault.to_account_info(),
-                            mint:      mint_account.to_account_info(),
+                            mint: mint_account.to_account_info(),
                         },
                         signer_seeds,
                     ),
@@ -408,4 +402,67 @@ impl<'info> BridgeTransaction<'info> {
 
         Ok(())
     }
+}
+
+pub fn verify_ed25519_batch(
+    instructions_sysvar: &AccountInfo,
+    message: &[u8],
+) -> Result<Vec<Pubkey>> {
+    let current_ix_idx = load_current_index_checked(instructions_sysvar)
+        .map_err(|_| error!(CustomError::InvalidRemainingAccounts))?;
+    require!(current_ix_idx > 0, CustomError::InvalidRemainingAccounts);
+
+    let ix = load_instruction_at_checked((current_ix_idx - 1) as usize, instructions_sysvar)
+        .map_err(|_| error!(CustomError::InvalidRemainingAccounts))?;
+    let ed25519_program_id = pubkey!("Ed25519SigVerify111111111111111111111111111");
+    require_keys_eq!(ix.program_id, ed25519_program_id, CustomError::InvalidRemainingAccounts);
+
+    let data = ix.data;
+    require!(data.len() >= 2, CustomError::InvalidRemainingAccounts);
+    let sig_count = data[0] as usize;
+    require!(sig_count > 0, CustomError::NoSignersProvided);
+
+    let mut cursor = 2;
+    let mut pubkeys = Vec::with_capacity(sig_count);
+
+    for _ in 0..sig_count {
+        require!(
+            cursor + 14 <= data.len(),
+            CustomError::InvalidRemainingAccounts
+        );
+        let sig_offset = u16::from_le_bytes([data[cursor], data[cursor + 1]]) as usize;
+        let sig_ix_idx = u16::from_le_bytes([data[cursor + 2], data[cursor + 3]]);
+        let pk_offset = u16::from_le_bytes([data[cursor + 4], data[cursor + 5]]) as usize;
+        let pk_ix_idx = u16::from_le_bytes([data[cursor + 6], data[cursor + 7]]);
+        let msg_offset = u16::from_le_bytes([data[cursor + 8], data[cursor + 9]]) as usize;
+        let msg_size = u16::from_le_bytes([data[cursor + 10], data[cursor + 11]]) as usize;
+        let msg_ix_idx = u16::from_le_bytes([data[cursor + 12], data[cursor + 13]]);
+
+        cursor += 14;
+
+        // all data must come from this instruction (index 0)
+        require!(
+            sig_ix_idx == 0 && pk_ix_idx == 0 && msg_ix_idx == 0,
+            CustomError::InvalidRemainingAccounts
+        );
+
+        require!(
+            sig_offset + 64 <= data.len()
+                && pk_offset + 32 <= data.len()
+                && msg_offset + msg_size <= data.len(),
+            CustomError::InvalidRemainingAccounts
+        );
+
+        let _sig = &data[sig_offset..sig_offset + 64];
+        let msg = &data[msg_offset..msg_offset + msg_size];
+        let pk_bytes: [u8; 32] = data[pk_offset..pk_offset + 32]
+            .try_into()
+            .map_err(|_| error!(CustomError::InvalidRemainingAccounts))?;
+
+        require!(msg == message, CustomError::InvalidBatchId);
+        let pk = Pubkey::new_from_array(pk_bytes);
+        pubkeys.push(pk);
+    }
+
+    Ok(pubkeys)
 }
