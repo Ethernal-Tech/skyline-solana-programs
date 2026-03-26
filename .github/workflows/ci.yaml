@@ -19,7 +19,6 @@ on:
         required: true
         default: "develop"
 
-        
 jobs:
   test:
     name: Run Anchor Tests
