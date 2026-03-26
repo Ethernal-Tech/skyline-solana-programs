@@ -187,6 +187,23 @@ describe("bridge-transaction ed25519 flow", () => {
     return await provider.sendAndConfirm(tx, []);
   };
 
+  const assertTxError = (
+    e: any,
+    expectedCode: string,
+    expectedLogFragment: string
+  ) => {
+    const code = e?.error?.errorCode?.code ?? e?.errorCode?.code;
+    if (code) {
+      expect(code).to.equal(expectedCode);
+      return;
+    }
+
+    const logs = (e?.logs ?? e?.error?.logs ?? []).join("\n");
+    const msg = e?.message ?? "";
+    const combined = `${msg}\n${logs}`;
+    expect(combined).to.include(expectedLogFragment);
+  };
+
   before("load validator keys and setup mint", async function () {
     const isInitialized = await fixture.isInitialized();
     if (!isInitialized) {
@@ -234,8 +251,11 @@ describe("bridge-transaction ed25519 flow", () => {
       await sendTx([bridgeIx]);
     } catch (e: any) {
       threw = true;
-      const code = e.error?.errorCode?.code ?? e.errorCode?.code;
-      expect(code).to.equal("InvalidRemainingAccounts");
+      assertTxError(
+        e,
+        "InvalidRemainingAccounts",
+        "remaining_accounts layout is inconsistent"
+      );
     }
     expect(threw).to.equal(true);
   });
@@ -296,8 +316,7 @@ describe("bridge-transaction ed25519 flow", () => {
       await sendTx([edIx, bridgeIx]);
     } catch (e: any) {
       threw = true;
-      const code = e.error?.errorCode?.code ?? e.errorCode?.code;
-      expect(code).to.equal("InvalidSigner");
+      assertTxError(e, "InvalidSigner", "Invalid signer provided");
     }
     expect(threw).to.equal(true);
   });
@@ -318,8 +337,11 @@ describe("bridge-transaction ed25519 flow", () => {
       await sendTx([edIx, bridgeIx]);
     } catch (e: any) {
       threw = true;
-      const code = e.error?.errorCode?.code ?? e.errorCode?.code;
-      expect(code).to.equal("InsufficientSigners");
+      assertTxError(
+        e,
+        "InsufficientSigners",
+        "Not enough validators signed this transaction"
+      );
     }
     expect(threw).to.equal(true);
   });
