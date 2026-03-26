@@ -52,6 +52,11 @@ jobs:
       - name: Verify Solana toolchain
         run: solana --version
 
+      - name: Create Solana wallet for tests
+        run: |
+          mkdir -p "$HOME/.config/solana"
+          solana-keygen new --no-bip39-passphrase -s -o "$HOME/.config/solana/id.json"
+
       - name: Install Anchor CLI 0.32.1
         run: cargo install --git https://github.com/coral-xyz/anchor anchor-cli --tag v0.32.1 --locked
 
