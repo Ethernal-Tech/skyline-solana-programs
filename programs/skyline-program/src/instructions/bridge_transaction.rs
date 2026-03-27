@@ -28,12 +28,12 @@
 //! All addresses are validated on-chain against their derived/expected values.
 //! The relayer must pass accounts in this exact order or the instruction fails.
 
+use anchor_lang::solana_program::sysvar::instructions::{
+    load_current_index_checked, load_instruction_at_checked,
+};
 use anchor_spl::{
     associated_token::{self, get_associated_token_address, AssociatedToken},
     token::{self, transfer_checked, Mint, Token, TransferChecked},
-};
-use anchor_lang::solana_program::{
-    sysvar::instructions::{load_current_index_checked, load_instruction_at_checked},
 };
 
 use crate::*;
@@ -410,14 +410,30 @@ pub fn verify_ed25519_batch(
 ) -> Result<Vec<Pubkey>> {
     let current_ix_idx = load_current_index_checked(instructions_sysvar)
         .map_err(|_| error!(CustomError::InvalidRemainingAccounts))?;
-    require!(current_ix_idx > 0, CustomError::InvalidRemainingAccounts);
-
-    let ix = load_instruction_at_checked((current_ix_idx - 1) as usize, instructions_sysvar)
-        .map_err(|_| error!(CustomError::InvalidRemainingAccounts))?;
     let ed25519_program_id = pubkey!("Ed25519SigVerify111111111111111111111111111");
-    require_keys_eq!(ix.program_id, ed25519_program_id, CustomError::InvalidRemainingAccounts);
+    let mut candidates: Vec<u16> = Vec::with_capacity(2);
+    if current_ix_idx > 0 {
+        candidates.push(current_ix_idx - 1);
+    }
+    candidates.push(current_ix_idx + 1);
 
-    let data = ix.data;
+    for candidate_idx in candidates {
+        let ix = match load_instruction_at_checked(candidate_idx as usize, instructions_sysvar) {
+            Ok(ix) => ix,
+            Err(_) => continue,
+        };
+
+        if ix.program_id != ed25519_program_id {
+            continue;
+        }
+
+        return parse_ed25519_batch(ix.data.as_slice(), message, candidate_idx);
+    }
+
+    err!(CustomError::InvalidRemainingAccounts)
+}
+
+fn parse_ed25519_batch(data: &[u8], message: &[u8], ed_ix_idx: u16) -> Result<Vec<Pubkey>> {
     require!(data.len() >= 2, CustomError::InvalidRemainingAccounts);
     let sig_count = data[0] as usize;
     require!(sig_count > 0, CustomError::NoSignersProvided);
@@ -440,9 +456,12 @@ pub fn verify_ed25519_batch(
 
         cursor += 14;
 
-        // all data must come from this instruction (index 0)
+        // Allow either "current instruction" (0xFFFF) or explicit ed25519 index.
+        let valid_sig_idx = sig_ix_idx == u16::MAX || sig_ix_idx == ed_ix_idx;
+        let valid_pk_idx = pk_ix_idx == u16::MAX || pk_ix_idx == ed_ix_idx;
+        let valid_msg_idx = msg_ix_idx == u16::MAX || msg_ix_idx == ed_ix_idx;
         require!(
-            sig_ix_idx == 0 && pk_ix_idx == 0 && msg_ix_idx == 0,
+            valid_sig_idx && valid_pk_idx && valid_msg_idx,
             CustomError::InvalidRemainingAccounts
         );
 
@@ -460,8 +479,7 @@ pub fn verify_ed25519_batch(
             .map_err(|_| error!(CustomError::InvalidRemainingAccounts))?;
 
         require!(msg == message, CustomError::InvalidBatchId);
-        let pk = Pubkey::new_from_array(pk_bytes);
-        pubkeys.push(pk);
+        pubkeys.push(Pubkey::new_from_array(pk_bytes));
     }
 
     Ok(pubkeys)

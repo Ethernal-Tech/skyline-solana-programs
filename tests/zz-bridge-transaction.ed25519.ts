@@ -33,33 +33,33 @@ function buildEd25519BatchIx(signers: web3.Keypair[], message: Buffer) {
   const headerSize = 2 + count * 14;
   const chunks: Buffer[] = [];
   const offsets: Buffer[] = [];
+  const perSignerPayloadSize = 64 + 32; // signature + pubkey
+  const sharedMessageOffset = headerSize + count * perSignerPayloadSize;
   let cursor = headerSize;
 
   for (const kp of signers) {
     const sig = Buffer.from(nacl.sign.detached(message, kp.secretKey));
     const pk = Buffer.from(kp.publicKey.toBytes());
-    const msg = Buffer.from(message);
 
     const sigOffset = cursor;
     cursor += sig.length;
     const pkOffset = cursor;
     cursor += pk.length;
-    const msgOffset = cursor;
-    cursor += msg.length;
 
     offsets.push(
       Buffer.concat([
         u16(sigOffset),
-        u16(0),
+        u16(0xffff),
         u16(pkOffset),
-        u16(0),
-        u16(msgOffset),
-        u16(msg.length),
-        u16(0)
+        u16(0xffff),
+        u16(sharedMessageOffset),
+        u16(message.length),
+        u16(0xffff)
       ])
     );
-    chunks.push(sig, pk, msg);
+    chunks.push(sig, pk);
   }
+  chunks.push(Buffer.from(message));
 
   const data = Buffer.concat([
     Buffer.from([count, 0]),
@@ -273,7 +273,7 @@ describe("bridge-transaction ed25519 flow", () => {
 
     let threw = false;
     try {
-      await sendTx([edIx, bridgeIx]);
+      await sendTx([bridgeIx, edIx]);
     } catch {
       threw = true;
     }
@@ -293,7 +293,7 @@ describe("bridge-transaction ed25519 flow", () => {
 
     let threw = false;
     try {
-      await sendTx([edIx, bridgeIx]);
+      await sendTx([bridgeIx, edIx]);
     } catch {
       threw = true;
     }
@@ -313,7 +313,7 @@ describe("bridge-transaction ed25519 flow", () => {
 
     let threw = false;
     try {
-      await sendTx([edIx, bridgeIx]);
+      await sendTx([bridgeIx, edIx]);
     } catch (e: any) {
       threw = true;
       assertTxError(e, "InvalidSigner", "Invalid signer provided");
@@ -334,7 +334,7 @@ describe("bridge-transaction ed25519 flow", () => {
 
     let threw = false;
     try {
-      await sendTx([edIx, bridgeIx]);
+      await sendTx([bridgeIx, edIx]);
     } catch (e: any) {
       threw = true;
       assertTxError(
@@ -360,7 +360,7 @@ describe("bridge-transaction ed25519 flow", () => {
       [mint],
       batchId
     );
-    await sendTx([edIx, bridgeIx]);
+    await sendTx([bridgeIx, edIx]);
 
     const after = await fixture.tokenBalances.getBalance(recipientAta);
     expect((after - before).toString()).to.equal(amount.toString());
