@@ -188,8 +188,7 @@ impl<'info> BridgeTransaction<'info> {
         let num_transfers = transfers.len();
 
         // Validator pubkeys are sourced from the preceding ed25519 instruction.
-        let message = batch_id.to_le_bytes();
-        let pubkeys = verify_ed25519_batch(&ctx.accounts.instructions.to_account_info(), &message)?;
+        let pubkeys = verify_ed25519_batch(&ctx.accounts.instructions.to_account_info())?;
 
         let mints_start = 0;
         let wallets_start = mints_start + num_mints;
@@ -404,10 +403,7 @@ impl<'info> BridgeTransaction<'info> {
     }
 }
 
-pub fn verify_ed25519_batch(
-    instructions_sysvar: &AccountInfo,
-    message: &[u8],
-) -> Result<Vec<Pubkey>> {
+pub fn verify_ed25519_batch(instructions_sysvar: &AccountInfo) -> Result<Vec<Pubkey>> {
     let current_ix_idx = load_current_index_checked(instructions_sysvar)
         .map_err(|_| error!(CustomError::InvalidRemainingAccounts))?;
     let ed25519_program_id = pubkey!("Ed25519SigVerify111111111111111111111111111");
@@ -427,13 +423,13 @@ pub fn verify_ed25519_batch(
             continue;
         }
 
-        return parse_ed25519_batch(ix.data.as_slice(), message, candidate_idx);
+        return parse_ed25519_batch(ix.data.as_slice(), candidate_idx);
     }
 
     err!(CustomError::InvalidRemainingAccounts)
 }
 
-fn parse_ed25519_batch(data: &[u8], message: &[u8], ed_ix_idx: u16) -> Result<Vec<Pubkey>> {
+fn parse_ed25519_batch(data: &[u8], ed_ix_idx: u16) -> Result<Vec<Pubkey>> {
     require!(data.len() >= 2, CustomError::InvalidRemainingAccounts);
     let sig_count = data[0] as usize;
     require!(sig_count > 0, CustomError::NoSignersProvided);
@@ -473,12 +469,10 @@ fn parse_ed25519_batch(data: &[u8], message: &[u8], ed_ix_idx: u16) -> Result<Ve
         );
 
         let _sig = &data[sig_offset..sig_offset + 64];
-        let msg = &data[msg_offset..msg_offset + msg_size];
         let pk_bytes: [u8; 32] = data[pk_offset..pk_offset + 32]
             .try_into()
             .map_err(|_| error!(CustomError::InvalidRemainingAccounts))?;
 
-        require!(msg == message, CustomError::InvalidBatchId);
         pubkeys.push(Pubkey::new_from_array(pk_bytes));
     }
 
