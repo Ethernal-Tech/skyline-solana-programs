@@ -59,6 +59,7 @@ docker build -f dockerfile -t solana-program-builder .
 
 > First build takes ~15–20 min (compiles Rust toolchain + Anchor CLI).
 > Subsequent builds are faster due to Docker layer caching.
+> If you changed `dockerfile`, rebuild the image before running tests.
 
 ### 2. Export Artifacts to `program_build`
 
@@ -73,7 +74,19 @@ docker run --rm \
   solana-program-builder
 ```
 
-### 3. Verify Exported Files
+### 3. Run Tests Inside the Docker Image
+
+```bash
+# Runs Anchor tests inside the same container image.
+# Creates an ephemeral local wallet keypair required by Anchor.
+# --skip-build reuses the already-built program from image build time.
+docker run --rm \
+  --entrypoint sh \
+  solana-program-builder \
+  -lc "mkdir -p /root/.config/solana && solana-keygen new --no-bip39-passphrase -s -o /root/.config/solana/id.json && anchor test --skip-build"
+```
+
+### 4. Verify Exported Files
 
 ```bash
 ls -lh ./program_build/

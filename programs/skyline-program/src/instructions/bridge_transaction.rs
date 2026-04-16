@@ -13,17 +13,20 @@
 //! ## `remaining_accounts` layout
 //!
 //! ```text
-//! ┌─────────────────────────────────────────────────────────────────────┐
-//! │ Section            │ Count          │ Notes                         │
-//! ├─────────────────────────────────────────────────────────────────────┤
-//! │ validator signers  │ num_validators │ all have is_signer = true     │
-//! │ mint accounts      │ num_mints      │ parallel to `mints` arg       │
-//! │ recipient wallets  │ num_transfers  │ one per TransferItem          │
-//! │ token registries   │ num_mints      │ one per unique mint, indexed  │
-//! │ recipient ATAs     │ num_transfers  │ one per transfer, isWritable  │
-//! │ vault ATAs         │ num_mints      │ one per unique mint, indexed  │
-//! └─────────────────────────────────────────────────────────────────────┘
+//! ┌──────────────────────────────────────────────────────────────────────────┐
+//! │ Section            │ Count          │ Notes                              │
+//! ├──────────────────────────────────────────────────────────────────────────┤
+//! │ mint accounts      │ num_mints      │ parallel to `mints` arg, writable │
+//! │ recipient wallets  │ num_transfers  │ one per TransferItem               │
+//! │ token registries   │ num_mints      │ one per unique mint, read-only     │
+//! │ recipient ATAs     │ num_transfers  │ one per transfer, writable         │
+//! │ vault ATAs         │ num_mints      │ one per unique mint, writable      │
+//! └──────────────────────────────────────────────────────────────────────────┘
 //! ```
+//!
+//! **Writability**: Mint accounts must be writable (`mint_to` updates supply
+//! for mint-burn tokens). Recipient ATAs and vault ATAs must be writable for
+//! token transfers. Wallets and registries are read-only.
 //!
 //! All addresses are validated on-chain against their derived/expected values.
 //! The relayer must pass accounts in this exact order or the instruction fails.

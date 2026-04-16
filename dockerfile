@@ -65,9 +65,11 @@ COPY Cargo.lock ./
 COPY rust-toolchain.toml ./
 COPY package.json ./
 COPY yarn.lock ./
+COPY tsconfig.json ./
 
 # ── Copy program source ───────────────────────────────────────────────────────
 COPY programs/ ./programs/
+COPY tests/ ./tests/
 
 # ── Install JS dependencies ───────────────────────────────────────────────────
 RUN yarn install --frozen-lockfile

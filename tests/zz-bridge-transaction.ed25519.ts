@@ -122,7 +122,7 @@ describe("bridge-transaction ed25519 flow", () => {
     const mintMetas = mints.map((m) => ({
       pubkey: m,
       isSigner: false,
-      isWritable: false
+      isWritable: true
     }));
     const walletMetas = transfers.map((t) => ({
       pubkey: t.recipient,

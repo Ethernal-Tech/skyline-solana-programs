@@ -715,11 +715,11 @@ export class BridgeTransactionHelper {
       isWritable: false
     }));
 
-    // Section 2 — mint accounts (read-only, parallel to mints[])
+    // Section 2 — mint accounts (writable for mint_to CPI on mint-burn tokens)
     const mintMetas = mints.map((m) => ({
       pubkey: m,
       isSigner: false,
-      isWritable: false
+      isWritable: true
     }));
 
     // Section 3 — recipient wallets (one per transfer, read-only)
