@@ -140,7 +140,7 @@ impl<'info> BridgeTransaction<'info> {
         // ── 1. Validate transfer count and mint list bounds ──────────────────────
 
         require!(
-            !transfers.is_empty(),
+            !transfers.is_empty() && transfers.len() <= MAX_TRANSFERS,
             CustomError::InvalidTransferCount
         );
 

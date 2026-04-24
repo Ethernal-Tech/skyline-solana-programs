@@ -98,6 +98,15 @@ impl<'info> Initialize<'info> {
         vault.bump = ctx.bumps.vault;
         // Initialize fee config values
 
+        require!(
+            ctx.accounts.treasury.key() != Pubkey::default(),
+            CustomError::InvalidTreasury
+        );
+        require!(
+            ctx.accounts.relayer.key() != Pubkey::default(),
+            CustomError::InvalidRelayer
+        );
+
         // Validate once here so bridge_request can safely add the two fees together without overflow checks every time
         // If these two values overflow u64 together, reject immediately at init.
         min_operational_fee
