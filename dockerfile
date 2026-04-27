@@ -77,6 +77,7 @@ RUN yarn install --frozen-lockfile
 # ── Copy keypair (preserves Program ID) ────────────────────────────────
 RUN mkdir -p target/deploy
 COPY program_build/skyline_program-keypair.json ./target/deploy/skyline_program-keypair.json
+COPY program_build/mpl_token_metadata.so ./program_build/mpl_token_metadata.so
 
 # ── Verify Program ID ─────────────────────────────────────────────────────────
 RUN echo ">>> PROGRAM ID:" && \

@@ -485,6 +485,157 @@
       ]
     },
     {
+      "name": "hot_wallet_increment",
+      "docs": [
+        "Lock additional lock/unlock tokens into the bridge vault (hot wallet).",
+        "",
+        "Top-ups vault liquidity for a previously registered lock/unlock token.",
+        "The mint must already be registered via `register_lock_unlock_token`;",
+        "unregistered or mint/burn tokens are rejected before any transfer happens.",
+        "",
+        "# Arguments",
+        "* `ctx`    - Instruction context",
+        "* `amount` - Raw token amount to lock (must be > 0)",
+        "",
+        "# Errors",
+        "* `InvalidAmount`     - `amount` is zero",
+        "* `InsufficientFunds` - Signer's ATA balance is below `amount`",
+        "* `InvalidVault`      - Provided vault ATA doesn't match the canonical ATA",
+        "* `NotLockUnlock`     - Mint is registered but as a mint/burn token",
+        "* Anchor seeds error  - Mint has no `TokenRegistry` (i.e. unregistered)"
+      ],
+      "discriminator": [
+        60,
+        140,
+        196,
+        63,
+        147,
+        195,
+        18,
+        90
+      ],
+      "accounts": [
+        {
+          "name": "signer",
+          "docs": [
+            "The user depositing tokens into the bridge hot wallet.",
+            "Pays rent if the vault ATA needs to be created."
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "signers_ata",
+          "docs": [
+            "The signer's source token account. Tokens are debited from here."
+          ],
+          "writable": true
+        },
+        {
+          "name": "vault",
+          "docs": [
+            "Bridge vault PDA — owns `vault_ata`."
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault_ata",
+          "docs": [
+            "The vault's associated token account for the deposited mint.",
+            "Created on-demand inside `process_instruction` if missing —",
+            "`init_if_needed` is avoided to keep the program free of that feature."
+          ],
+          "writable": true
+        },
+        {
+          "name": "mint",
+          "docs": [
+            "The mint of the tokens being deposited."
+          ]
+        },
+        {
+          "name": "token_registry",
+          "docs": [
+            "Registry entry proving this mint is a registered lock/unlock token.",
+            "",
+            "Two-layer check:",
+            "1. `seeds` resolution fails if no registry exists for this mint",
+            "(i.e. the mint was never registered) — Anchor surfaces this",
+            "as `ConstraintSeeds`/`AccountNotInitialized`.",
+            "2. `constraint` enforces the registered token is lock/unlock,",
+            "not mint/burn."
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  111,
+                  107,
+                  101,
+                  110,
+                  95,
+                  114,
+                  101,
+                  103,
+                  105,
+                  115,
+                  116,
+                  114,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "mint"
+              }
+            ]
+          }
+        },
+        {
+          "name": "token_program",
+          "docs": [
+            "SPL Token program."
+          ],
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "system_program",
+          "docs": [
+            "System program — required for ATA creation CPI."
+          ],
+          "address": "11111111111111111111111111111111"
+        },
+        {
+          "name": "associated_token_program",
+          "docs": [
+            "Associated token program — required for ATA creation CPI."
+          ],
+          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
       "name": "initialize",
       "docs": [
         "Initializes the full bridge system:",
@@ -1226,6 +1377,19 @@
       ]
     },
     {
+      "name": "HotWalletIncrementEvent",
+      "discriminator": [
+        59,
+        172,
+        72,
+        125,
+        228,
+        239,
+        221,
+        175
+      ]
+    },
+    {
       "name": "LockUnlockTokenRegisteredEvent",
       "discriminator": [
         190,
@@ -1620,6 +1784,42 @@
               "Relayer address"
             ],
             "type": "pubkey"
+          }
+        ]
+      }
+    },
+    {
+      "name": "HotWalletIncrementEvent",
+      "docs": [
+        "Emitted when tokens are deposited (locked) into the bridge vault via",
+        "the `hot_wallet_increment` instruction.",
+        "",
+        "Off-chain systems use this to track top-ups of vault liquidity for",
+        "lock/unlock bridgeable tokens."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "sender",
+            "docs": [
+              "The depositor's wallet pubkey."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "mint",
+            "docs": [
+              "The mint of the tokens that were locked into the vault."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "amount",
+            "docs": [
+              "The amount of tokens locked, in the mint's native base units."
+            ],
+            "type": "u64"
           }
         ]
       }

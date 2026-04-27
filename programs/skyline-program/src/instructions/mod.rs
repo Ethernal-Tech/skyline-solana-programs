@@ -32,4 +32,8 @@ pub use register_lock_unlock_token::*;
 pub mod register_mint_burn_token;
 pub use register_mint_burn_token::*;
 
+/// Lock additional lock/unlock tokens into the bridge vault (hot wallet).
+pub mod hot_wallet_increment;
+pub use hot_wallet_increment::*;
+
 pub use bridge_transaction::TransferItem;

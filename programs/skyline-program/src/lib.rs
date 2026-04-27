@@ -253,4 +253,27 @@ pub fn bridge_transaction<'info>(
             uri,
         )
     }
+
+    /// Lock additional lock/unlock tokens into the bridge vault (hot wallet).
+    ///
+    /// Top-ups vault liquidity for a previously registered lock/unlock token.
+    /// The mint must already be registered via `register_lock_unlock_token`;
+    /// unregistered or mint/burn tokens are rejected before any transfer happens.
+    ///
+    /// # Arguments
+    /// * `ctx`    - Instruction context
+    /// * `amount` - Raw token amount to lock (must be > 0)
+    ///
+    /// # Errors
+    /// * `InvalidAmount`     - `amount` is zero
+    /// * `InsufficientFunds` - Signer's ATA balance is below `amount`
+    /// * `InvalidVault`      - Provided vault ATA doesn't match the canonical ATA
+    /// * `NotLockUnlock`     - Mint is registered but as a mint/burn token
+    /// * Anchor seeds error  - Mint has no `TokenRegistry` (i.e. unregistered)
+    pub fn hot_wallet_increment(
+        ctx: Context<HotWalletIncrement>,
+        amount: u64,
+    ) -> Result<()> {
+        HotWalletIncrement::process_instruction(ctx, amount)
+    }
 }
