@@ -4,7 +4,7 @@
 //! validator limits, seed strings for Program Derived Addresses (PDAs), and
 //! other configuration parameters.
 
-use anchor_lang::constant;
+use anchor_lang::{constant, prelude::Pubkey, pubkey};
 
 /// Maximum number of validators allowed in the validator set.
 ///
@@ -67,3 +67,7 @@ pub const TOKEN_REGISTRY_SEED: &[u8] = b"token_registry";
 /// Seed string used to derive TokenIdGuard PDA
 #[constant]
 pub const TOKEN_ID_GUARD_SEED: &[u8] = b"token_id_guard";
+
+/// Canonical wrapped SOL (wSOL) SPL mint address.
+#[constant]
+pub const WSOL_MINT: Pubkey = pubkey!("So11111111111111111111111111111111111111112");

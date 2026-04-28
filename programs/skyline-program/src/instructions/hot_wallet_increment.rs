@@ -1,19 +1,15 @@
 //! Hot wallet increment instruction.
 //!
-//! Locks lock/unlock tokens into the bridge vault and emits a
+//! Locks wSOL into the bridge vault and emits a
 //! `HotWalletIncrementEvent` so off-chain systems can track the deposit.
 //!
 //! ## Eligibility
 //!
-//! Only mints registered via `register_lock_unlock_token` are accepted:
-//!   - The `TokenRegistry` PDA must exist for the mint
-//!     (enforced by Anchor's `seeds`/`bump` resolution — unregistered
-//!      mints fail account loading before `process_instruction` runs).
-//!   - `token_registry.is_lock_unlock == true`
-//!     (mint/burn tokens have no vault-held supply to be incremented).
+//! Only the canonical wrapped SOL mint is accepted:
+//!   - `So11111111111111111111111111111111111111112`
 //!
 //! ## Process
-//! 1. Validate the registry indicates a lock/unlock token (account constraint).
+//! 1. Validate the mint is the canonical wSOL mint (account constraint).
 //! 2. Validate amount > 0 and the signer holds enough tokens.
 //! 3. Create the vault ATA on-demand if it doesn't exist yet.
 //! 4. `transfer_checked` from signer's ATA to vault ATA.
@@ -59,22 +55,9 @@ pub struct HotWalletIncrement<'info> {
     pub vault_ata: UncheckedAccount<'info>,
 
     /// The mint of the tokens being deposited.
+    /// Must be canonical wrapped SOL mint.
+    #[account(address = WSOL_MINT @ CustomError::InvalidMintToken)]
     pub mint: Account<'info, Mint>,
-
-    /// Registry entry proving this mint is a registered lock/unlock token.
-    ///
-    /// Two-layer check:
-    ///   1. `seeds` resolution fails if no registry exists for this mint
-    ///      (i.e. the mint was never registered) — Anchor surfaces this
-    ///      as `ConstraintSeeds`/`AccountNotInitialized`.
-    ///   2. `constraint` enforces the registered token is lock/unlock,
-    ///      not mint/burn.
-    #[account(
-        seeds = [TOKEN_REGISTRY_SEED, mint.key().as_ref()],
-        bump = token_registry.bump,
-        constraint = token_registry.is_lock_unlock @ CustomError::NotLockUnlock,
-    )]
-    pub token_registry: Account<'info, TokenRegistry>,
 
     /// SPL Token program.
     pub token_program: Program<'info, Token>,
@@ -98,8 +81,7 @@ impl<'info> HotWalletIncrement<'info> {
     /// * `InvalidAmount`        - `amount == 0`
     /// * `InsufficientFunds`    - signer's ATA balance < `amount`
     /// * `InvalidVault`         - `vault_ata` is not the canonical ATA
-    /// * `NotLockUnlock`        - mint is registered as mint/burn, not lock/unlock
-    /// * Anchor seeds error     - mint has no registry (i.e. unregistered)
+    /// * `InvalidMintToken`     - mint is not canonical wSOL mint
     pub fn process_instruction(ctx: Context<HotWalletIncrement>, amount: u64) -> Result<()> {
         require!(amount > 0, CustomError::InvalidAmount);
 

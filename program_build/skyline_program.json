@@ -489,9 +489,8 @@
       "docs": [
         "Lock additional lock/unlock tokens into the bridge vault (hot wallet).",
         "",
-        "Top-ups vault liquidity for a previously registered lock/unlock token.",
-        "The mint must already be registered via `register_lock_unlock_token`;",
-        "unregistered or mint/burn tokens are rejected before any transfer happens.",
+        "Top-ups vault liquidity using canonical wrapped SOL (wSOL) only.",
+        "The mint must be exactly `So11111111111111111111111111111111111111112`.",
         "",
         "# Arguments",
         "* `ctx`    - Instruction context",
@@ -501,8 +500,7 @@
         "* `InvalidAmount`     - `amount` is zero",
         "* `InsufficientFunds` - Signer's ATA balance is below `amount`",
         "* `InvalidVault`      - Provided vault ATA doesn't match the canonical ATA",
-        "* `NotLockUnlock`     - Mint is registered but as a mint/burn token",
-        "* Anchor seeds error  - Mint has no `TokenRegistry` (i.e. unregistered)"
+        "* `InvalidMintToken` - Mint is not canonical wSOL"
       ],
       "discriminator": [
         60,
@@ -563,48 +561,10 @@
         {
           "name": "mint",
           "docs": [
-            "The mint of the tokens being deposited."
-          ]
-        },
-        {
-          "name": "token_registry",
-          "docs": [
-            "Registry entry proving this mint is a registered lock/unlock token.",
-            "",
-            "Two-layer check:",
-            "1. `seeds` resolution fails if no registry exists for this mint",
-            "(i.e. the mint was never registered) — Anchor surfaces this",
-            "as `ConstraintSeeds`/`AccountNotInitialized`.",
-            "2. `constraint` enforces the registered token is lock/unlock,",
-            "not mint/burn."
+            "The mint of the tokens being deposited.",
+            "Must be canonical wrapped SOL mint."
           ],
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  116,
-                  111,
-                  107,
-                  101,
-                  110,
-                  95,
-                  114,
-                  101,
-                  103,
-                  105,
-                  115,
-                  116,
-                  114,
-                  121
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "mint"
-              }
-            ]
-          }
+          "address": "So11111111111111111111111111111111111111112"
         },
         {
           "name": "token_program",
@@ -2278,6 +2238,14 @@
       ],
       "type": "bytes",
       "value": "[118, 97, 117, 108, 116]"
+    },
+    {
+      "name": "WSOL_MINT",
+      "docs": [
+        "Canonical wrapped SOL (wSOL) SPL mint address."
+      ],
+      "type": "pubkey",
+      "value": "So11111111111111111111111111111111111111112"
     }
   ]
 }

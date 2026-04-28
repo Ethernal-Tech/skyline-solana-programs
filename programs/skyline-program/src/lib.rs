@@ -256,9 +256,8 @@ pub fn bridge_transaction<'info>(
 
     /// Lock additional lock/unlock tokens into the bridge vault (hot wallet).
     ///
-    /// Top-ups vault liquidity for a previously registered lock/unlock token.
-    /// The mint must already be registered via `register_lock_unlock_token`;
-    /// unregistered or mint/burn tokens are rejected before any transfer happens.
+    /// Top-ups vault liquidity using canonical wrapped SOL (wSOL) only.
+    /// The mint must be exactly `So11111111111111111111111111111111111111112`.
     ///
     /// # Arguments
     /// * `ctx`    - Instruction context
@@ -268,8 +267,7 @@ pub fn bridge_transaction<'info>(
     /// * `InvalidAmount`     - `amount` is zero
     /// * `InsufficientFunds` - Signer's ATA balance is below `amount`
     /// * `InvalidVault`      - Provided vault ATA doesn't match the canonical ATA
-    /// * `NotLockUnlock`     - Mint is registered but as a mint/burn token
-    /// * Anchor seeds error  - Mint has no `TokenRegistry` (i.e. unregistered)
+    /// * `InvalidMintToken` - Mint is not canonical wSOL
     pub fn hot_wallet_increment(
         ctx: Context<HotWalletIncrement>,
         amount: u64,

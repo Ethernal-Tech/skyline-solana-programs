@@ -16,10 +16,12 @@ import {
 } from "./fixtures";
 import {
   createAssociatedTokenAccountInstruction,
+  createSyncNativeInstruction,
   createTransferInstruction,
   getAccount,
   getAssociatedTokenAddressSync,
-  getOrCreateAssociatedTokenAccount
+  getOrCreateAssociatedTokenAccount,
+  NATIVE_MINT
 } from "@solana/spl-token";
 import { BN } from "bn.js";
 
@@ -931,11 +933,33 @@ describe("skyline-program", () => {
   // HOT WALLET INCREMENT TESTS
   // ============================================================================
   describe("Hot Wallet Increment", () => {
-    let luMint: web3.PublicKey; // registered lock/unlock mint
-    let mbMint: web3.PublicKey | null = null; // registered mint/burn mint (for NotLockUnlock test)
-    let unregisteredMint: web3.PublicKey; // never registered (for AccountNotInitialized test)
+    const wsolMint = NATIVE_MINT;
+    let nonWsolMint: web3.PublicKey;
     let user: web3.Keypair;
     let vaultPDA: web3.PublicKey;
+
+    async function wrapSol(
+      signer: web3.Keypair,
+      lamports: number
+    ): Promise<web3.PublicKey> {
+      const ata = await getOrCreateAssociatedTokenAccount(
+        provider.connection,
+        owner.payer,
+        wsolMint,
+        signer.publicKey
+      );
+
+      const tx = new web3.Transaction().add(
+        web3.SystemProgram.transfer({
+          fromPubkey: signer.publicKey,
+          toPubkey: ata.address,
+          lamports
+        }),
+        createSyncNativeInstruction(ata.address)
+      );
+      await web3.sendAndConfirmTransaction(provider.connection, tx, [signer]);
+      return ata.address;
+    }
 
     before("setup hot wallet increment tests", async () => {
       vaultPDA = fixture.pdas.vault();
@@ -947,19 +971,12 @@ describe("skyline-program", () => {
         10 * web3.LAMPORTS_PER_SOL
       );
 
-      // Lock/unlock mint — token_id 700 to avoid collisions with other suites
-      luMint = await fixture.mints.create(owner.publicKey, 6);
-      await fixture.tokenRegistry.registerLockUnlock({
-        mint: luMint,
-        tokenId: 700,
-        minBridgingAmount: 1
-      });
+      // Fund user with wSOL for deposit scenarios.
+      await wrapSol(user, 10_000_000);
 
-      // An unregistered mint — no token_registry PDA exists for it
-      unregisteredMint = await fixture.mints.create(owner.publicKey, 6);
-
-      // Fund the user with luMint tokens to deposit
-      await fixture.mints.mintTo(luMint, user.publicKey, 10_000_000);
+      // A non-wSOL mint for InvalidMintToken validation.
+      nonWsolMint = await fixture.mints.create(owner.publicKey, 6);
+      await fixture.mints.mintTo(nonWsolMint, user.publicKey, 1_000_000);
     });
 
     // ════════════════════════════════════════════════════════════════════
@@ -971,7 +988,7 @@ describe("skyline-program", () => {
         await fixture.hotWalletIncrement.expectError(
           {
             amount: 0,
-            mint: luMint,
+            mint: wsolMint,
             signer: user
           },
           "InvalidAmount"
@@ -986,91 +1003,29 @@ describe("skyline-program", () => {
           web3.LAMPORTS_PER_SOL
         );
 
-        // Fund with only 100 tokens, then attempt to lock 1_000_000
-        await fixture.mints.mintTo(luMint, poorUser.publicKey, 100);
+        // Wrap only 100 lamports of SOL, then attempt to lock 1_000_000.
+        await wrapSol(poorUser, 100);
 
         await fixture.hotWalletIncrement.expectError(
           {
             amount: 1_000_000,
-            mint: luMint,
+            mint: wsolMint,
             signer: poorUser
           },
           "InsufficientFunds"
         );
       });
 
-      it("fails when mint is not registered (no TokenRegistry PDA)", async () => {
-        // Fund the user so signers_ata exists — guarantees the failure is
-        // about token_registry, not the ATA check.
-        await fixture.mints.mintTo(unregisteredMint, user.publicKey, 1_000);
-
-        try {
-          await fixture.hotWalletIncrement.call({
-            amount: 100,
-            mint: unregisteredMint,
-            signer: user
-          });
-          expect.fail("Expected error for unregistered mint");
-        } catch (e: any) {
-          const errorMsg = e.message || "";
-          const errorCode = e.error?.errorCode?.code || "";
-          expect(errorMsg).to.include("token_registry");
-          expect(errorCode).to.equal("AccountNotInitialized");
-        }
-      });
-
-      it("fails when token is registered as mint/burn (NotLockUnlock)", async () => {
-        if (!mbMint) {
-          try {
-            // Some local validators do not preload the Metaplex metadata program.
-            // Register lazily here so the rest of the hot-wallet suite still runs.
-            const mb = await fixture.tokenRegistry.registerMintBurn({
-              tokenId: 701,
-              decimals: 6,
-              minBridgingAmount: 1,
-              name: "MB Test",
-              symbol: "MBT",
-              uri: "https://example.com/mbt.json"
-            });
-            mbMint = mb.mint;
-          } catch (e: any) {
-            if (
-              e?.message?.includes("InvalidProgramExecutable") ||
-              e?.message?.includes("metadata_program")
-            ) {
-              // Environment fallback: when metadata program is unavailable,
-              // this test can't construct a mint/burn token. Treat this as a
-              // validated environment limitation instead of a pending test.
-              expect(e.message).to.satisfy(
-                (msg: string) =>
-                  msg.includes("InvalidProgramExecutable") ||
-                  msg.includes("metadata_program")
-              );
-              return;
-            }
-            throw e;
-          }
-        }
-
-        // The mint/burn mint has vault as mint authority — we can't mint
-        // tokens directly to the user without a CPI. But the is_lock_unlock
-        // constraint trips at account-loading time, before the
-        // signers_ata.amount check. We just need the ATA to exist.
-        const userAta = await getOrCreateAssociatedTokenAccount(
-          provider.connection,
-          owner.payer,
-          mbMint!,
-          user.publicKey
-        );
-
+      it("fails when mint is not canonical wSOL", async () => {
+        const userAta = getAssociatedTokenAddressSync(nonWsolMint, user.publicKey);
         await fixture.hotWalletIncrement.expectError(
           {
-            amount: 1,
-            mint: mbMint!,
+            amount: 100,
+            mint: nonWsolMint,
             signer: user,
-            signersAtaOverride: userAta.address
+            signersAtaOverride: userAta
           },
-          "NotLockUnlock"
+          "InvalidMintToken"
         );
       });
 
@@ -1080,7 +1035,7 @@ describe("skyline-program", () => {
         await fixture.hotWalletIncrement.expectError(
           {
             amount: 100,
-            mint: luMint,
+            mint: wsolMint,
             signer: user,
             vaultAtaOverride: fakeVaultAta
           },
@@ -1094,12 +1049,12 @@ describe("skyline-program", () => {
     // ════════════════════════════════════════════════════════════════════
 
     describe("Happy Paths", () => {
-      it("locks tokens, creates vault ATA on first deposit, emits event", async () => {
+      it("locks wSOL, creates vault ATA on first deposit, emits event", async () => {
         const amount = new BN(250_000);
-        const signerAta = getAssociatedTokenAddressSync(luMint, user.publicKey);
-        const vaultAta = getAssociatedTokenAddressSync(luMint, vaultPDA, true);
+        const signerAta = getAssociatedTokenAddressSync(wsolMint, user.publicKey);
+        const vaultAta = getAssociatedTokenAddressSync(wsolMint, vaultPDA, true);
 
-        // Vault ATA for the freshly created luMint must not exist yet
+        // Vault ATA for wSOL must not exist yet in this suite.
         const vaultAtaInfoBefore = await provider.connection.getAccountInfo(
           vaultAta
         );
@@ -1114,7 +1069,7 @@ describe("skyline-program", () => {
 
         const sig = await fixture.hotWalletIncrement.call({
           amount,
-          mint: luMint,
+          mint: wsolMint,
           signer: user
         });
         expect(sig).to.be.a("string").and.not.empty;
@@ -1148,8 +1103,8 @@ describe("skyline-program", () => {
 
       it("locks additional tokens into existing vault ATA", async () => {
         const amount = new BN(100_000);
-        const signerAta = getAssociatedTokenAddressSync(luMint, user.publicKey);
-        const vaultAta = getAssociatedTokenAddressSync(luMint, vaultPDA, true);
+        const signerAta = getAssociatedTokenAddressSync(wsolMint, user.publicKey);
+        const vaultAta = getAssociatedTokenAddressSync(wsolMint, vaultPDA, true);
 
         const vaultBefore = await fixture.tokenBalances.snapshot(vaultAta);
         const signerBefore = await fixture.tokenBalances.snapshot(signerAta);
@@ -1158,7 +1113,7 @@ describe("skyline-program", () => {
 
         await fixture.hotWalletIncrement.call({
           amount,
-          mint: luMint,
+          mint: wsolMint,
           signer: user
         });
 
@@ -1174,22 +1129,22 @@ describe("skyline-program", () => {
       });
 
       it("supports multiple sequential deposits from the same user", async () => {
-        const vaultAta = getAssociatedTokenAddressSync(luMint, vaultPDA, true);
+        const vaultAta = getAssociatedTokenAddressSync(wsolMint, vaultPDA, true);
         const before = await fixture.tokenBalances.snapshot(vaultAta);
 
         await fixture.hotWalletIncrement.call({
           amount: 1_000,
-          mint: luMint,
+          mint: wsolMint,
           signer: user
         });
         await fixture.hotWalletIncrement.call({
           amount: 2_000,
-          mint: luMint,
+          mint: wsolMint,
           signer: user
         });
         await fixture.hotWalletIncrement.call({
           amount: 3_000,
-          mint: luMint,
+          mint: wsolMint,
           signer: user
         });
 
