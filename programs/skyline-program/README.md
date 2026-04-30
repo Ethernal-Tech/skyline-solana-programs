@@ -1,136 +1,156 @@
-# Instructions Spec
+# Skyline Program — Instructions Spec
 
-This spec contains the on-chain instruction handlers for the Skyline Solana program.
+This document describes the on-chain instruction handlers for the Skyline Solana program.
 
-At a high level, Skyline implements a validator-governed bridge workflow using:
-- a **ValidatorSet** PDA that stores bridge governance state (validator keys, threshold, bump, batch counters), and
-- a **Vault** PDA that acts as the program’s authority for minting and/or transferring tokens.
+Skyline implements a validator-governed cross-chain bridge using:
+- a **ValidatorSet** PDA that stores governance state (validator keys, BFT threshold, batch counter), and
+- a **Vault** PDA that acts as the program's authority for minting and transferring tokens.
 
-The bridge supports two modes:
-1. **Burn / Lock mode**: tokens are burned (if the vault is mint authority) or transferred from the sender’s token account into the vault’s token account (if the vault is not mint authority). This is an outbound flow (Solana => other chain).
-2. **Mint / Release mode**: tokens are minted to recipient’s token account (if vault is mint authority) or transferred from the vault’s token account into the recipient’s token account (if the vault is not mint authority). This is an inbound flow (other chain => Solana).
+Two token modes are supported per registered mint:
+1. **Lock/Unlock** — tokens are transferred into the vault on outbound, released from the vault on inbound (e.g. USDC, WSOL).
+2. **Mint/Burn** — tokens are burned from the user on outbound, minted to the recipient on inbound (vault is mint authority).
 
+---
 
 ## Key Concepts
 
 ### Validator consensus
-Validator consensus plays a critical role in two cases:
-1. A bridge transaction lands on Solana from another chain.
-2. The validator set needs to be updated.
 
-In both cases, the program follows the same high-level approval pattern:
-- Validator signer accounts are passed via `remaining_accounts`.
-- The program collects accounts with `is_signer == true`.
-- It validates those signers are members of already stored `validator_set.signers`.
-- It enforces a quorum: the number of valid validator approvals must be `>= validator_set.threshold`.
+Validator consensus is required for two operations:
+1. Settling an inbound bridge transfer onto Solana (`bridge_transaction`).
+2. Changing the validator set (`bridge_vsu`).
+
+Both follow the same pattern:
+- Validator signer accounts are passed as `remaining_accounts` with `is_signer = true`.
+- The program collects those signers, deduplicates them, and validates each is a registered validator.
+- Quorum is enforced: number of valid approvals must be `>= validator_set.threshold`.
+
+Consensus is resolved in **a single transaction** — there is no multi-round accumulation PDA.
+
+### BFT threshold
+
+```
+threshold = n - floor((n - 1) / 3)
+```
+
+Tolerates up to `floor((n-1)/3)` Byzantine validators. Examples: n=4 → t=3, n=7 → t=5, n=10 → t=7.
 
 ### Batch IDs and replay protection
-Inbound execution instructions use a monotonically increasing `batch_id` with:
-- a stored batch_id: `validator_set.last_batch_id`
-- a constraint: `validator_set.last_batch_id < batch_id`
 
-When an instruction completes, it updates `last_batch_id = batch_id`.
-
-This provides on-chain replay protection, assuming `batch_id` is globally coordinated off-chain.
+Both `bridge_transaction` and `bridge_vsu` use a shared monotonically increasing `batch_id` stored in `ValidatorSet.last_batch_id`. The constraint `last_batch_id < batch_id` is enforced; on completion `last_batch_id = batch_id` is written. This prevents replays and enforces total ordering of all consensus operations.
 
 ### Events as outbound messages
-Outbound bridge requests emit `BridgeRequestEvent` event. Validators/relayers index these events off-chain to drive actions on other chains.
 
-## Architecture overview
+`bridge_request` emits `BridgeRequestEvent`. Validators and relayers index these events off-chain to drive actions on the destination chain.
+
+---
+
+## Architecture Overview
+
 <details>
 <summary>View Diagram</summary>
 
 ```mermaid
 flowchart LR
-  %% ========== Off-chain ==========
-  subgraph OFF[Off-chain components]
-    WAL["User Wallet"]
-    VAL["Validators<br/>(N signers)"]
+  subgraph OFF[Off-chain]
+    USER["User Wallet"]
+    VAL["Validators (N signers)"]
     REL["Relayer"]
-    IDX["Indexer<br/>(reads tx logs)"]
+    IDX["Indexer (reads logs)"]
     EXT["External chain(s)"]
   end
 
-  %% ========== Solana ==========
-  subgraph SOL[Solana]
-    PROG["Skyline Program"]
+  subgraph SOL[Solana — Skyline Program]
     VS[("ValidatorSet PDA")]
     VA[("Vault PDA")]
-    BT[("BridgingTransaction PDA<br/>(per batch_id)")]
-    VD[("ValidatorDelta PDA<br/>(per batch_id)")]
-    LOG[("Transaction Logs<br/>(events)")]
+    FC[("FeeConfig PDA")]
+    TR[("TokenRegistry PDA\n(per mint)")]
+    TG[("TokenIdGuard PDA\n(per token_id)")]
+    LOG[("Transaction Logs\n(events)")]
   end
 
-  %% ========== System Programs ==========
   subgraph SYS[Solana Programs]
-    TOKEN[["SPL Token Program"]]
-    ATA[["Associated Token Program"]]
+    TOKEN[["SPL Token"]]
+    ATA[["Associated Token"]]
+    META[["Metaplex Metadata"]]
     SYSTEM[["System Program"]]
   end
 
-  %% ===== Connections (static) =====
-  WAL -->|"submits tx"| PROG
-  REL -->|"submits tx"| PROG
-  VAL -->|"sign tx"| PROG
+  USER -->|bridge_request| SOL
+  REL  -->|bridge_transaction| SOL
+  VAL  -->|sign tx| SOL
+  REL  -->|bridge_vsu| SOL
+  VAL  -->|sign tx| SOL
 
-  PROG --- VS
-  PROG --- VA
-  PROG --- BT
-  PROG --- VD
-
-  PROG -->|"CPI"| TOKEN
-  PROG -->|"CPI"| ATA
-  PROG --> SYSTEM
-
-  PROG -->|"emit!"| LOG
-  IDX -->|"reads via RPC"| LOG
-  IDX --> EXT
-  EXT --> REL
+  SOL --> VS & VA & FC & TR & TG
+  SOL -->|CPI| TOKEN & ATA & META & SYSTEM
+  SOL -->|emit!| LOG
+  IDX -->|RPC| LOG
+  IDX --> EXT --> REL
 ```
 </details>
+
+---
 
 ## Program State (Accounts)
 
 ### `ValidatorSet` (PDA)
-**Seeds:** `[VALIDATOR_SET_SEED]`
+**Seeds:** `[b"validator-set"]`
 
-Holds:
-- `signers: Vec<Pubkey>` — current validator keys
-- `threshold: u8` — required approvals (computed via `helpers::calculate_threshold`)
-- `bump: u8`
-- `last_batch_id: u64` — replay-protection pointer for validator-executed operations
-- `bridge_request_count: u64` — outbound request counter used in events
+| Field | Type | Description |
+|-------|------|-------------|
+| `signers` | `Vec<Pubkey>` | Current validator public keys (4–128) |
+| `threshold` | `u8` | Required approval count (BFT formula) |
+| `bump` | `u8` | PDA bump |
+| `last_batch_id` | `u64` | Replay-protection pointer |
+| `bridge_request_count` | `u64` | Outbound request counter |
 
 ### `Vault` (PDA)
-**Seeds:** `[VAULT_SEED]`
+**Seeds:** `[b"vault"]`
 
-Holds:
-- `address: Pubkey` — its own PDA address
-- `bump: u8`
+| Field | Type | Description |
+|-------|------|-------------|
+| `bump` | `u8` | PDA bump |
 
-The Vault PDA is used as the signing authority (via seeds) for:
-- SPL `mint_to` when it is mint authority, or
-- SPL `transfer` from the vault’s token account when it is not mint authority.
+The Vault PDA is the signing authority for all token CPIs: `mint_to`, `transfer_checked` from vault ATA, and burn (as mint authority for MintBurn tokens). It is also the `mint_authority` and `freeze_authority` for every MintBurn token.
 
-### `BridgingTransaction` (PDA, per batch)
-**Seeds:** `[BRIDGING_TRANSACTION_SEED, batch_id.to_le_bytes()]`
+### `FeeConfig` (PDA)
+**Seeds:** `[b"fee_config"]`
 
-Created with `init_if_needed` and used to:
-- store the proposed transfer details (amount, receiver, mint, batch_id)
-- accumulate validator approvals across multiple transactions
-- execute once quorum is reached
-- close itself after execution (rent refund to payer)
+| Field | Type | Description |
+|-------|------|-------------|
+| `min_operational_fee` | `u64` | Minimum lamports sent to treasury per `bridge_request` |
+| `bridge_fee` | `u64` | Lamports sent to relayer per `bridge_request` (destination gas estimate) |
+| `treasury` | `Pubkey` | Receives `fee - bridge_fee` on every `bridge_request` |
+| `relayer` | `Pubkey` | Receives `bridge_fee` on every `bridge_request` |
+| `authority` | `Pubkey` | Who can update this config |
+| `bump` | `u8` | PDA bump |
 
-### `ValidatorDelta` (PDA, per batch)
-**Seeds:** `[VALIDATOR_SET_CHANGE_SEED, batch_id.to_le_bytes()]`
+### `TokenRegistry` (PDA)
+**Seeds:** `[b"token_registry", mint.key()]`
 
-Created with `init_if_needed` and used to:
-- store a validator-set change proposal (`added`, `removed`, `proposal_hash`)
-- accumulate validator approvals across multiple transactions
-- apply the change once quorum is reached
-- close itself after execution (rent refund to payer)
+One per registered mint. Determines the bridge mechanic for that mint.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `token_id` | `u16` | Gateway-compatible identifier |
+| `mint` | `Pubkey` | The SPL mint this entry corresponds to |
+| `is_lock_unlock` | `bool` | `true` = Lock/Unlock, `false` = Mint/Burn |
+| `min_bridging_amount` | `u64` | Minimum raw token amount per `bridge_request` |
+| `bump` | `u8` | PDA bump |
+
+### `TokenIdGuard` (PDA)
+**Seeds:** `[b"token_id_guard", token_id.to_le_bytes()]`
+
+Uniqueness sentinel: its existence proves the `token_id` slot is taken. Created by Anchor `init` — a second registration attempt with the same `token_id` fails automatically.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `mint` | `Pubkey` | The mint that owns this token_id |
+| `bump` | `u8` | PDA bump |
 
 ### State / Accounts Model
+
 <details>
 <summary>View Diagram</summary>
 
@@ -138,15 +158,7 @@ Created with `init_if_needed` and used to:
 classDiagram
   direction LR
 
-  class SkylineProgram {
-    Instructions:
-    initialize()
-    bridge_request()
-    bridge_transaction()
-    bridge_vsu()
-  }
-
-  class ValidatorSetPDA {
+  class ValidatorSet {
     +signers: Pubkey[]
     +threshold: u8
     +last_batch_id: u64
@@ -154,161 +166,249 @@ classDiagram
     +bump: u8
   }
 
-  class VaultPDA {
-    +address: Pubkey
+  class Vault {
     +bump: u8
   }
 
-  class BridgingTransactionPDA {
-    +batch_id: u64
-    +amount: u64
-    +mint_token: Pubkey
-    +receiver: Pubkey
-    +signers: Pubkey[]
-    +threshold: u8
+  class FeeConfig {
+    +min_operational_fee: u64
+    +bridge_fee: u64
+    +treasury: Pubkey
+    +relayer: Pubkey
+    +authority: Pubkey
+    +bump: u8
   }
 
-  class ValidatorDeltaPDA {
-    +batch_id: u64
-    +added: Pubkey[]
-    +removed: u64[]
-    +proposal_hash: [u8; 32]
-    +signers: Pubkey[]
-    +threshold: u8
-  }
-
-  class TokenAccount {
-    +owner: Pubkey
+  class TokenRegistry {
+    +token_id: u16
     +mint: Pubkey
-    +amount: u64
-    ...
+    +is_lock_unlock: bool
+    +min_bridging_amount: u64
+    +bump: u8
   }
 
-  SkylineProgram --> ValidatorSetPDA
-  SkylineProgram --> VaultPDA
-  SkylineProgram --> BridgingTransactionPDA
-  SkylineProgram --> ValidatorDeltaPDA
+  class TokenIdGuard {
+    +mint: Pubkey
+    +bump: u8
+  }
 
-
-  VaultPDA --> TokenAccount
+  Vault --> TokenRegistry : mint_authority (MintBurn only)
+  TokenRegistry --> TokenIdGuard : token_id uniqueness
 ```
 </details>
 
+---
+
 ## Instruction Specifications
 
-### 1) `initialize(validators: Vec<Pubkey>, last_id: u64)`
-**Purpose:** Bootstrap the bridge by creating the `ValidatorSet` PDA and the `Vault` PDA.
+### 1) `initialize`
 
-**Caller:** Admin/initializer (any signer who funds initialization; only runnable once due to PDA `init`).
+```
+initialize(validators: Vec<Pubkey>, last_id: Option<u64>, min_operational_fee: u64, bridge_fee: u64)
+```
+
+**Purpose:** One-time bootstrap. Creates `ValidatorSet`, `Vault`, and `FeeConfig` PDAs.
+
+**Caller:** Any signer (becomes `fee_config.authority`). Runs once — PDA `init` prevents re-initialization.
+
+**Required accounts:** `signer`, `validator_set`, `vault`, `fee_config`, `treasury`, `relayer`, `system_program`
+
+**Validation:**
+- `4 <= validators.len() <= 128`
+- All `validators` must be unique
+- `treasury` and `relayer` must not be `Pubkey::default()`
+- `min_operational_fee + bridge_fee` must not overflow `u64`
 
 **State changes:**
-- sets `validator_set.signers = validators`
-- sets `validator_set.threshold = helpers::calculate_threshold(validators.len())`
-- sets `validator_set.last_batch_id = last_id`
-- sets `validator_set.bridge_request_count = 0`
-- stores bumps
-- initializes vault metadata
+- `validator_set.signers = validators`
+- `validator_set.threshold = calculate_threshold(validators.len())`
+- `validator_set.last_batch_id = last_id` (defaults to 0)
+- `validator_set.bridge_request_count = 0`
+- `fee_config.{min_operational_fee, bridge_fee, treasury, relayer, authority}` initialised
 
-**Validation rules:**
-- `MIN_VALIDATORS <= validators.len() <= MAX_VALIDATORS`
-- all `validators` must be unique
+---
 
+### 2) `bridge_request`
 
-### 2) `bridge_request(amount: u64, receiver: Vec<u8>, destination_chain: u8)`
-**Purpose:** Create an outbound bridge request from Solana to a destination chain by either burning tokens or transferring them into vault custody, then emitting an event.
+```
+bridge_request(amount: u64, receiver: String, destination_chain: String, fees: u64)
+```
+
+**Purpose:** Outbound bridge request. Pays SOL fees, then locks or burns tokens, emitting an event for validators.
 
 **Caller:** End user.
 
+**Required accounts:** `signer`, `validator_set`, `signers_ata`, `vault`, `vault_ata`, `mint`, `token_registry`, `token_program`, `system_program`, `associated_token_program`, `fee_config`, `treasury`, `relayer`
+
+**Fee flow (SOL):**
+- `bridge_fee → relayer`
+- `fees - bridge_fee → treasury` (must be `>= min_operational_fee`)
+
 **Token flow:**
-- If Vault PDA is mint authority for `mint`:
-  - burn `amount` from user’s ATA
-- Else:
-  - create vault ATA for `(vault, mint)` if needed
-  - transfer `amount` from user ATA to vault ATA
+| `is_lock_unlock` | Action |
+|-----------------|--------|
+| `false` (MintBurn) | Burn `amount` from `signers_ata`; vault is mint authority |
+| `true` (LockUnlock) | Create vault ATA if absent; transfer `amount` from `signers_ata` to vault ATA |
 
-**Outputs:**
-- emits `BridgeRequestEvent` including:
-  - `sender` (Solana pubkey)
-  - `amount`
-  - `receiver` (destination address bytes)
-  - `destination_chain`
-  - `mint_token`
-  - `batch_request_id = validator_set.bridge_request_count`
+**Validation:**
+- `amount >= token_registry.min_bridging_amount`
+- `fees >= min_operational_fee + bridge_fee`
+- User ATA must match `(mint, signer)`
+- `vault_ata` must be the canonical ATA for `(vault, mint)`
 
-**State changes:**
-- increments `validator_set.bridge_request_count`
+**Emits:** `BridgeRequestEvent { sender, amount, receiver, destination_chain, mint_token, bridge_fee, operational_fee }`
 
-**Validation rules:**
-- user ATA must match `(mint, signer)`
-- user must have sufficient balance
-- when transferring, the provided `vault_ata` must validate as the correct token account for `(vault, mint)`
+**State changes:** `validator_set.bridge_request_count += 1`
 
+---
 
-### 3) `bridge_transaction(amount: u64, batch_id: u64)`
-**Purpose:** Execute an inbound bridge settlement onto Solana (mint or release tokens) after validator quorum approval, using a per-batch approval accumulator.
+### 3) `bridge_transaction`
 
-**Caller:** Anyone, but in practice Relayer (the `payer`) funds PDA/ATA creation and acts as a tx signer. Validators approve by being transaction signers in `remaining_accounts`.
+```
+bridge_transaction(transfers: Vec<TransferItem>, mints: Vec<Pubkey>, batch_id: u64)
+```
 
-**Anti-replay:**
-- requires `validator_set.last_batch_id < batch_id`
-- on successful execution sets `validator_set.last_batch_id = batch_id`
+**Purpose:** Inbound batch settlement. Mints or releases tokens to up to 5 recipients in one transaction after validator quorum is met.
 
-**Approval accumulation:**
-- First call creates `BridgingTransaction` and stores `(amount, receiver, mint_token, batch_id)`
-- Subsequent calls must match those stored values
-- Each call can add approvals from validator signers in `remaining_accounts`
-- Enforces:
-  - at least one signer provided
-  - no duplicate signer keys in a single call
-  - signers must be members of `validator_set.signers`
-  - signers cannot approve twice (checked against stored approvals)
+**Caller:** Relayer (pays rent for any new recipient ATAs).
 
-**Execution (once quorum reached):**
-- create recipient ATA for `(recipient, mint_token)` if needed
-- if Vault PDA is mint authority:
-  - `mint_to` recipient ATA signed by Vault PDA seeds
-- else:
-  - validate the provided vault token account for `(vault, mint_token)`
-  - transfer from vault token account to recipient ATA signed by Vault PDA seeds
-- emits `TransactionExecutedEvent { transaction_id, batch_id }`
-- closes the `BridgingTransaction` PDA (refunds rent to payer)
+**`TransferItem` fields:**
+| Field | Type | Description |
+|-------|------|-------------|
+| `recipient` | `Pubkey` | Destination wallet (not ATA — the raw owner) |
+| `mint_index` | `u8` | Zero-based index into the `mints` argument |
+| `amount` | `u64` | Token amount in base units |
 
-**State changes:**
-- updates `validator_set.last_batch_id`
-- closes `bridging_transaction` PDA
+**`remaining_accounts` layout (strict positional):**
 
+```
+[ validator signers | mint accounts | recipient wallets | token registries | recipient ATAs | vault ATAs ]
+  ^num_validators    ^num_mints      ^num_transfers       ^num_mints         ^num_transfers   ^num_mints
+```
 
-### 4) `bridge_vsu(added: Vec<Pubkey>, removed: Vec<u64>, batch_id: u64)`
-**Purpose:** Propose and apply a validator set update (add/remove validators) after quorum approval, using a per-batch approval accumulator.
+Validators are auto-detected by `is_signer = true`. All other sections are sized from `mints.len()` and `transfers.len()`. Every account address is validated against its canonical derived value before use.
 
-**Caller:** Anyone, but in practice Relayer (the `payer`) funds PDA creation. Validators approve by being transaction signers in `remaining_accounts`.
+**Validation:**
+- `1 <= transfers.len() <= 5`
+- `1 <= mints.len() <= transfers.len()` (every mint referenced by at least one transfer)
+- All `mint_index` values in bounds; all `amount` values > 0
+- `batch_id > validator_set.last_batch_id`
+- Validator signers: non-empty, deduplicated, all registered, count `>= threshold`
+- Each `TokenRegistry` PDA address verified before deserialisation
+- Each recipient ATA and vault ATA address verified against derived values
 
-**Anti-replay:**
-- requires `validator_set.last_batch_id < batch_id`
-- on successful execution sets `validator_set.last_batch_id = batch_id`
+**Token flow per transfer:**
+| `registry.is_lock_unlock` | Action |
+|--------------------------|--------|
+| `false` (MintBurn) | `mint_to` recipient ATA (vault signs as mint authority) |
+| `true` (LockUnlock) | `transfer_checked` from vault ATA to recipient ATA (vault signs) |
 
-**Proposal integrity:**
-- computes `proposal_hash = hash( concat(added_pubkeys_bytes) || concat(removed_u64_bytes) )`
-- first call stores the proposal details in `ValidatorDelta`
-- subsequent calls must match the stored `proposal_hash`
+Recipient ATAs are created on-demand (funded by `payer`).
 
-**Validation rules (on first proposal creation):**
-- cannot add a pubkey already present in `validator_set.signers`
-- removed indices must be in-bounds of the current signer list
-- resulting signer count must satisfy `MIN_VALIDATORS..=MAX_VALIDATORS`
+**Emits:** `TransactionExecutedEvent { batch_id, transfer_count }`
 
-**Approval accumulation:**
-- at least one signer provided
-- no duplicate signer keys in a single call
-- signers must be current validators
-- signers cannot approve twice
+**State changes:** `validator_set.last_batch_id = batch_id`
 
-**Execution (once quorum reached):**
-- sorts removal indices descending and removes by index
-- appends added pubkeys
-- recomputes `validator_set.threshold`
-- emits `ValidatorSetUpdatedEvent { new_signers, new_threshold, batch_id }`
-- updates `validator_set.last_batch_id`
-- closes the `ValidatorDelta` PDA (refunds rent to payer)
+---
 
+### 4) `bridge_vsu`
 
+```
+bridge_vsu(added: Vec<Pubkey>, removed: Vec<Pubkey>, batch_id: u64)
+```
+
+**Purpose:** Change the validator set (add/remove validators) with quorum approval in a single transaction.
+
+**Caller:** Anyone pays; validators co-sign via `remaining_accounts`.
+
+**Required accounts:** `payer`, `validator_set`, `system_program`
+
+**Validation:**
+- `batch_id > validator_set.last_batch_id`
+- No duplicates within `added`; no duplicates within `removed`
+- No pubkey appears in both `added` and `removed`
+- All `removed` pubkeys must exist in `validator_set.signers`
+- All `added` pubkeys must not exist in `validator_set.signers`
+- Resulting validator count satisfies `4 <= count <= 128`
+- Validator signers (from `remaining_accounts`): non-empty, deduplicated, all registered, count `>= threshold`
+
+**Execution:**
+- Removes all pubkeys in `removed` from `validator_set.signers`
+- Appends all pubkeys in `added`
+- Recomputes `threshold`
+
+**Emits:** `ValidatorSetUpdatedEvent { new_signers, new_threshold, batch_id }`
+
+**State changes:** `validator_set.signers`, `validator_set.threshold`, `validator_set.last_batch_id = batch_id`
+
+---
+
+### 5) `update_fee_config`
+
+```
+update_fee_config(
+    min_operational_fee: Option<u64>,
+    bridge_fee: Option<u64>,
+    update_treasury: Option<bool>,
+    update_relayer: Option<bool>
+)
+```
+
+**Purpose:** Update fee configuration. All parameters are optional — `None` keeps the existing value.
+
+**Caller:** `fee_config.authority` only (`has_one` constraint).
+
+**Required accounts:** `authority`, `fee_config`, `new_treasury`, `new_relayer`
+
+**Validation:**
+- `new_op_fee + new_bridge_fee` must not overflow `u64`
+- If updating treasury: `new_treasury.key() != Pubkey::default()`
+- If updating relayer: `new_relayer.key() != Pubkey::default()`
+
+To update treasury or relayer: pass the new address in the account field AND `Some(true)` in the flag. Passing `None` for the flag keeps the existing address.
+
+**Emits:** `FeeConfigUpdatedEvent { min_operational_fee, bridge_fee, treasury, relayer }`
+
+---
+
+### 6) `register_lock_unlock_token`
+
+```
+register_lock_unlock_token(token_id: u16, min_bridging_amount: u64)
+```
+
+**Purpose:** Whitelist a pre-existing SPL mint (e.g. USDC, WSOL) for bridging via lock/unlock.
+
+**Caller:** `fee_config.authority` only.
+
+**Required accounts:** `authority`, `fee_config`, `mint`, `token_registry`, `token_id_guard`, `system_program`
+
+**What it does:**
+- Creates `TokenRegistry` PDA with `is_lock_unlock = true`
+- Creates `TokenIdGuard` PDA to reserve the `token_id`
+
+**Duplicate prevention:** Both PDAs use Anchor `init` — attempting to register the same mint or the same `token_id` a second time fails automatically.
+
+**Emits:** `LockUnlockTokenRegisteredEvent { token_id, mint, min_bridging_amount }`
+
+---
+
+### 7) `register_mint_burn_token`
+
+```
+register_mint_burn_token(token_id: u16, decimals: u8, min_bridging_amount: u64, name: String, symbol: String, uri: String)
+```
+
+**Purpose:** Create a new SPL mint with the Vault as mint authority, attach Metaplex metadata, and whitelist it for bridging via mint/burn.
+
+**Caller:** `fee_config.authority` only.
+
+**Required accounts:** `authority`, `fee_config`, `vault`, `mint` (new keypair, signer), `metadata`, `token_registry`, `token_id_guard`, `token_program`, `metadata_program`, `system_program`, `rent`
+
+**What it does:**
+1. Creates the SPL mint (via Anchor `init`) with `mint_authority = vault`, `freeze_authority = vault`
+2. Creates Metaplex metadata via CPI (`update_authority = vault`, `is_mutable = true`)
+3. Creates `TokenRegistry` PDA with `is_lock_unlock = false`
+4. Creates `TokenIdGuard` PDA to reserve the `token_id`
+
+**Emits:** `MintBurnTokenRegisteredEvent { token_id, mint, name, symbol }`

@@ -152,7 +152,7 @@ impl<'info> BridgeTransaction<'info> {
 
         require!(!transfers.is_empty(), CustomError::InvalidTransferCount);
         require!(
-            transfers.len() <= MAX_TRANSFERS,
+            !transfers.is_empty() && transfers.len() <= MAX_TRANSFERS,
             CustomError::InvalidTransferCount
         );
 
