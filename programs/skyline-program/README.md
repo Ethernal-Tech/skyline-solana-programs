@@ -20,10 +20,12 @@ Validator consensus is required for two operations:
 1. Settling an inbound bridge transfer onto Solana (`bridge_transaction`).
 2. Changing the validator set (`bridge_vsu`).
 
-Both follow the same pattern:
-- Validator signer accounts are passed as `remaining_accounts` with `is_signer = true`.
-- The program collects those signers, deduplicates them, and validates each is a registered validator.
-- Quorum is enforced: number of valid approvals must be `>= validator_set.threshold`.
+`bridge_transaction` and `bridge_vsu` use different signer sources:
+- `bridge_transaction`: validator pubkeys are extracted from a neighboring `ed25519` verify instruction (via the instructions sysvar), then deduplicated and checked against `validator_set.signers`.
+- `bridge_vsu`: validator signer accounts are passed in `remaining_accounts` with `is_signer = true`, then deduplicated and membership-checked.
+
+For both instructions, quorum is enforced as:
+- number of valid approvals must be `>= validator_set.threshold`.
 
 Consensus is resolved in **a single transaction** — there is no multi-round accumulation PDA.
 
@@ -56,6 +58,7 @@ flowchart LR
     USER["User Wallet"]
     VAL["Validators (N signers)"]
     REL["Relayer"]
+    TX["Single Solana transaction\n[ed25519 verify ix + bridge_transaction ix]"]
     IDX["Indexer (reads logs)"]
     EXT["External chain(s)"]
   end
@@ -73,12 +76,15 @@ flowchart LR
     TOKEN[["SPL Token"]]
     ATA[["Associated Token"]]
     META[["Metaplex Metadata"]]
+    ED[["Ed25519 Verify Program"]]
     SYSTEM[["System Program"]]
   end
 
   USER -->|bridge_request| SOL
-  REL  -->|bridge_transaction| SOL
-  VAL  -->|sign tx| SOL
+  VAL  -->|produce signatures| REL
+  REL  -->|submits one atomic tx| TX
+  TX   -->|instruction 1| ED
+  TX   -->|instruction 2| SOL
   REL  -->|bridge_vsu| SOL
   VAL  -->|sign tx| SOL
 
@@ -272,6 +278,8 @@ bridge_transaction(transfers: Vec<TransferItem>, mints: Vec<Pubkey>, batch_id: u
 
 **Caller:** Relayer (pays rent for any new recipient ATAs).
 
+**Consensus source:** Validator approvals are read from a neighboring `ed25519` verification instruction using the instructions sysvar account. Validator signer accounts are **not** part of `remaining_accounts` for this instruction.
+
 **`TransferItem` fields:**
 | Field | Type | Description |
 |-------|------|-------------|
@@ -282,19 +290,22 @@ bridge_transaction(transfers: Vec<TransferItem>, mints: Vec<Pubkey>, batch_id: u
 **`remaining_accounts` layout (strict positional):**
 
 ```
-[ validator signers | mint accounts | recipient wallets | token registries | recipient ATAs | vault ATAs ]
-  ^num_validators    ^num_mints      ^num_transfers       ^num_mints         ^num_transfers   ^num_mints
+[ mint accounts | recipient wallets | token registries | recipient ATAs | vault ATAs ]
+    ^num_mints      ^num_transfers    ^num_mints         ^num_transfers   ^num_mints
 ```
 
-Validators are auto-detected by `is_signer = true`. All other sections are sized from `mints.len()` and `transfers.len()`. Every account address is validated against its canonical derived value before use.
+Sections are fully positional and sized from `mints.len()` and `transfers.len()`. Every account address is validated against its canonical/expected value before use.
 
 **Validation:**
 - `1 <= transfers.len() <= 5`
 - `1 <= mints.len() <= transfers.len()` (every mint referenced by at least one transfer)
 - All `mint_index` values in bounds; all `amount` values > 0
 - `batch_id > validator_set.last_batch_id`
-- Validator signers: non-empty, deduplicated, all registered, count `>= threshold`
+- A neighboring `ed25519` verify instruction must be present (immediately before or after) and provide at least one signer pubkey
+- Extracted signer pubkeys must be deduplicated, all registered validators, and count `>= threshold`
 - Each `TokenRegistry` PDA address verified before deserialisation
+- Each mint account key must match the `mints` argument at the same index
+- Each recipient wallet account must match `TransferItem.recipient` at the same transfer index
 - Each recipient ATA and vault ATA address verified against derived values
 
 **Token flow per transfer:**

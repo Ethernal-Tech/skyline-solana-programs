@@ -4,10 +4,11 @@ on:
   push:
     branches:
       - develop
-      - fix/new-version
+      - feat/skyline
   pull_request:
     branches:
       - main
+      - feat/skyline
     types:
       - opened
       - synchronize
