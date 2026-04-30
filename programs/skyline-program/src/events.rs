@@ -94,6 +94,23 @@ pub struct LockUnlockTokenRegisteredEvent {
     pub min_bridging_amount: u64,
 }
 
+/// Emitted when tokens are deposited (locked) into the bridge vault via
+/// the `hot_wallet_increment` instruction.
+///
+/// Off-chain systems use this to track top-ups of vault liquidity for
+/// lock/unlock bridgeable tokens.
+#[event]
+pub struct HotWalletIncrementEvent {
+    /// The depositor's wallet pubkey.
+    pub sender: Pubkey,
+
+    /// The mint of the tokens that were locked into the vault.
+    pub mint: Pubkey,
+
+    /// The amount of tokens locked, in the mint's native base units.
+    pub amount: u64,
+}
+
 /// Emitted when a MintBurn token is registered.
 /// Gateway parity: TokenRegistered event in Gateway.sol
 ///

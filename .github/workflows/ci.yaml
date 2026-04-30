@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - develop
+      - fix/new-version
   pull_request:
     branches:
       - main
@@ -11,6 +12,12 @@ on:
       - opened
       - synchronize
       - reopened
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: "Branch to test"
+        required: true
+        default: "develop"
 
 jobs:
   test:
@@ -18,7 +25,13 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "yarn"
 
       - name: Setup Rust Toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v1
@@ -26,9 +39,29 @@ jobs:
           toolchain: "1.89.0"
           components: rustfmt, clippy
 
-      - name: Run Anchor Tests
-        uses: metadaoproject/anchor-test@v2.3
-        with:
-          anchor-version: "0.32.1"
-          solana-cli-version: "2.1.7"
-          node-version: "20"
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libudev-dev build-essential libssl-dev
+
+      - name: Install Solana CLI
+        run: |
+          sh -c "$(curl -sSfL https://release.anza.xyz/v3.0.13/install)"
+          echo "$HOME/.local/share/solana/install/active_release/bin" >> "$GITHUB_PATH"
+
+      - name: Verify Solana toolchain
+        run: solana --version
+
+      - name: Create Solana wallet for tests
+        run: |
+          mkdir -p "$HOME/.config/solana"
+          solana-keygen new --no-bip39-passphrase -s -o "$HOME/.config/solana/id.json"
+
+      - name: Install Anchor CLI 0.32.1
+        run: cargo install --git https://github.com/coral-xyz/anchor anchor-cli --tag v0.32.1 --locked
+
+      - name: Install JS dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Run Anchor tests
+        run: anchor test

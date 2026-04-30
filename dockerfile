@@ -65,9 +65,11 @@ COPY Cargo.lock ./
 COPY rust-toolchain.toml ./
 COPY package.json ./
 COPY yarn.lock ./
+COPY tsconfig.json ./
 
 # ── Copy program source ───────────────────────────────────────────────────────
 COPY programs/ ./programs/
+COPY tests/ ./tests/
 
 # ── Install JS dependencies ───────────────────────────────────────────────────
 RUN yarn install --frozen-lockfile
@@ -75,6 +77,7 @@ RUN yarn install --frozen-lockfile
 # ── Copy keypair (preserves Program ID) ────────────────────────────────
 RUN mkdir -p target/deploy
 COPY program_build/skyline_program-keypair.json ./target/deploy/skyline_program-keypair.json
+COPY program_build/mpl_token_metadata.so ./program_build/mpl_token_metadata.so
 
 # ── Verify Program ID ─────────────────────────────────────────────────────────
 RUN echo ">>> PROGRAM ID:" && \
@@ -86,3 +89,10 @@ RUN anchor build
 # Artifacts at:
 #   /app/target/deploy/skyline_program.so
 #   /app/target/deploy/skyline_program-keypair.json
+#   /app/target/idl/skyline_program.json
+
+# ── Runtime export directory (mount from host as /artifacts) ─────────────────
+RUN mkdir -p /artifacts
+
+# ── Default runtime: export build artifacts to mounted /artifacts ─────────────
+CMD ["sh", "-c", "set -e; cp /app/target/deploy/skyline_program-keypair.json /artifacts/; cp /app/target/deploy/skyline_program.so /artifacts/; cp /app/target/idl/skyline_program.json /artifacts/; echo 'Exported artifacts to /artifacts'"]

@@ -253,4 +253,25 @@ pub fn bridge_transaction<'info>(
             uri,
         )
     }
+
+    /// Lock additional lock/unlock tokens into the bridge vault (hot wallet).
+    ///
+    /// Top-ups vault liquidity using canonical wrapped SOL (wSOL) only.
+    /// The mint must be exactly `So11111111111111111111111111111111111111112`.
+    ///
+    /// # Arguments
+    /// * `ctx`    - Instruction context
+    /// * `amount` - Raw token amount to lock (must be > 0)
+    ///
+    /// # Errors
+    /// * `InvalidAmount`     - `amount` is zero
+    /// * `InsufficientFunds` - Signer's ATA balance is below `amount`
+    /// * `InvalidVault`      - Provided vault ATA doesn't match the canonical ATA
+    /// * `InvalidMintToken` - Mint is not canonical wSOL
+    pub fn hot_wallet_increment(
+        ctx: Context<HotWalletIncrement>,
+        amount: u64,
+    ) -> Result<()> {
+        HotWalletIncrement::process_instruction(ctx, amount)
+    }
 }

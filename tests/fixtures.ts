@@ -3,6 +3,7 @@ import * as anchor from "@coral-xyz/anchor";
 import { Program, web3, BN } from "@coral-xyz/anchor";
 import { SkylineProgram } from "../target/types/skyline_program";
 import { expect } from "chai";
+import { createHash } from "crypto";
 import {
   createMint,
   getOrCreateAssociatedTokenAccount,
@@ -23,6 +24,23 @@ export const SEEDS = {
   TOKEN_REGISTRY: "token_registry",
   TOKEN_ID_GUARD: "token_id_guard"
 } as const;
+
+/** Metaplex Token Metadata program ID — used to derive metadata PDAs. */
+export const MPL_TOKEN_METADATA_PROGRAM_ID = new web3.PublicKey(
+  "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s"
+);
+
+/** Derive the Metaplex metadata PDA for a given mint. */
+export function deriveMetadataPDA(mint: web3.PublicKey): web3.PublicKey {
+  return web3.PublicKey.findProgramAddressSync(
+    [
+      Buffer.from("metadata"),
+      MPL_TOKEN_METADATA_PROGRAM_ID.toBuffer(),
+      mint.toBuffer()
+    ],
+    MPL_TOKEN_METADATA_PROGRAM_ID
+  )[0];
+}
 
 export const LIMITS = {
   MIN_VALIDATORS: 4,
@@ -93,7 +111,11 @@ export interface TokenRegistryData {
 export function generateValidators(count: number): web3.Keypair[] {
   const validators: web3.Keypair[] = [];
   for (let i = 0; i < count; i++) {
-    validators.push(anchor.web3.Keypair.generate());
+    const seed = createHash("sha256")
+      .update(`skyline-validator-${i}`)
+      .digest()
+      .subarray(0, 32);
+    validators.push(anchor.web3.Keypair.fromSeed(seed));
   }
   return validators;
 }
@@ -584,6 +606,10 @@ export class TokenRegistryHelper {
     // we pass a fresh Keypair so Anchor knows the address and signs the allocation.
     const mintKeypair = web3.Keypair.generate();
 
+    // The Metaplex metadata PDA can't be auto-derived by Anchor because its
+    // seeds include the Metaplex program ID — we compute it explicitly.
+    const metadata = deriveMetadataPDA(mintKeypair.publicKey);
+
     const signature = await this.program.methods
       .registerMintBurnToken(
         params.tokenId,
@@ -595,7 +621,8 @@ export class TokenRegistryHelper {
       )
       .accountsPartial({
         authority: this.owner.publicKey,
-        mint: mintKeypair.publicKey
+        mint: mintKeypair.publicKey,
+        metadata
       })
       .signers([mintKeypair])
       .rpc();
@@ -710,11 +737,11 @@ export class BridgeTransactionHelper {
       isWritable: false
     }));
 
-    // Section 2 — mint accounts (read-only, parallel to mints[])
+    // Section 2 — mint accounts (writable for mint_to CPI on mint-burn tokens)
     const mintMetas = mints.map((m) => ({
       pubkey: m,
       isSigner: false,
-      isWritable: false
+      isWritable: true
     }));
 
     // Section 3 — recipient wallets (one per transfer, read-only)
@@ -1308,6 +1335,106 @@ export class BridgeRequestHelper {
 }
 
 // ============================================================================
+// HOT WALLET INCREMENT TYPES
+// ============================================================================
+
+export interface HotWalletIncrementParams {
+  amount: number | BN;
+  mint: web3.PublicKey;
+  /** Optional signer. Defaults to the test wallet owner. */
+  signer?: web3.Keypair;
+  /** Override vault ATA address (used to inject a wrong address for error tests). */
+  vaultAtaOverride?: web3.PublicKey;
+  /** Override the signer ATA (e.g. to point at a different mint than `mint`). */
+  signersAtaOverride?: web3.PublicKey;
+  /** Override the token_registry PDA (e.g. inject a foreign mint's registry). */
+  tokenRegistryOverride?: web3.PublicKey;
+}
+
+// ============================================================================
+// HOT WALLET INCREMENT HELPER
+// ============================================================================
+
+export class HotWalletIncrementHelper {
+  private program: Program<SkylineProgram>;
+  private owner: anchor.Wallet;
+  private vaultPDA: web3.PublicKey;
+
+  constructor(
+    program: Program<SkylineProgram>,
+    owner: anchor.Wallet,
+    vaultPDA: web3.PublicKey
+  ) {
+    this.program = program;
+    this.owner = owner;
+    this.vaultPDA = vaultPDA;
+  }
+
+  /** Derive the canonical token_registry PDA for a mint */
+  tokenRegistryPDA(mint: web3.PublicKey): web3.PublicKey {
+    return web3.PublicKey.findProgramAddressSync(
+      [Buffer.from(SEEDS.TOKEN_REGISTRY), mint.toBuffer()],
+      this.program.programId
+    )[0];
+  }
+
+  /**
+   * Call the hot_wallet_increment instruction.
+   *
+   * All PDAs are auto-derived; overrides exist only for negative-path tests.
+   */
+  async call(params: HotWalletIncrementParams): Promise<string> {
+    const amountBN =
+      typeof params.amount === "number" ? new BN(params.amount) : params.amount;
+    const signer = params.signer ?? this.owner.payer;
+
+    const signerAta =
+      params.signersAtaOverride ??
+      getAssociatedTokenAddressSync(params.mint, signer.publicKey);
+    const vaultAta =
+      params.vaultAtaOverride ??
+      getAssociatedTokenAddressSync(params.mint, this.vaultPDA, true);
+    const tokenRegistry =
+      params.tokenRegistryOverride ?? this.tokenRegistryPDA(params.mint);
+
+    return await this.program.methods
+      .hotWalletIncrement(amountBN)
+      .accountsPartial({
+        signer: signer.publicKey,
+        signersAta: signerAta,
+        vaultAta,
+        mint: params.mint,
+        tokenRegistry
+      })
+      .signers(signer === this.owner.payer ? [] : [signer])
+      .rpc();
+  }
+
+  /** Call and expect a specific Anchor error code. */
+  async expectError(
+    params: HotWalletIncrementParams,
+    expectedErrorCode: string
+  ): Promise<void> {
+    let thrown = false;
+    try {
+      await this.call(params);
+    } catch (e: any) {
+      thrown = true;
+      const code = e.error?.errorCode?.code ?? e.errorCode?.code;
+      expect(
+        code,
+        `expected error ${expectedErrorCode}, got ${code} — ${e.message}`
+      ).to.equal(expectedErrorCode);
+    }
+    if (!thrown) {
+      throw new Error(
+        `Expected hotWalletIncrement to fail with ${expectedErrorCode}, but it succeeded`
+      );
+    }
+  }
+}
+
+// ============================================================================
 // EVENT PARSING HELPERS
 // ============================================================================
 
@@ -1717,6 +1844,7 @@ export class SkylineTestFixture {
   public events: EventParser;
   public bridgeVSU: BridgeVSUHelper;
   public tokenRegistry: TokenRegistryHelper;
+  public hotWalletIncrement: HotWalletIncrementHelper;
 
   constructor(ctx: TestContext) {
     this.pdas = new PDAs(ctx.program.programId);
@@ -1737,6 +1865,11 @@ export class SkylineTestFixture {
     this.events = new EventParser(ctx.program, ctx.connection);
     this.tokenRegistry = new TokenRegistryHelper(ctx.program, ctx.owner);
     this.bridgeVSU = new BridgeVSUHelper(ctx.program, ctx.owner);
+    this.hotWalletIncrement = new HotWalletIncrementHelper(
+      ctx.program,
+      ctx.owner,
+      this.pdas.vault()
+    );
   }
 
   /** Check if validator set is already initialized */
