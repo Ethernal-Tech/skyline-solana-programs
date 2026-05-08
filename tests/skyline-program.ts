@@ -181,6 +181,10 @@ describe("skyline-program", () => {
               relayer.publicKey.toBase58()
             );
 
+            const pc = await fixture.getProgramConfig();
+            expect(pc.versionString).to.equal("0.1.0");
+            expect(pc.authority.toBase58()).to.equal(owner.publicKey.toBase58());
+
             console.log(
               "  ℹ ValidatorSet already initialized and matches expected state"
             );
@@ -239,6 +243,11 @@ describe("skyline-program", () => {
         expect(fc.treasury.toBase58()).to.equal(treasury.publicKey.toBase58());
         expect(fc.relayer.toBase58()).to.equal(relayer.publicKey.toBase58());
         assertValidBump(fc.bump);
+
+        const pc = await fixture.getProgramConfig();
+        expect(pc.versionString).to.equal("0.1.0");
+        expect(pc.authority.toBase58()).to.equal(owner.publicKey.toBase58());
+        expect(pc.deployedAt.toNumber()).to.be.greaterThan(0);
       });
 
       it("fails on re-initialization attempt", async function () {

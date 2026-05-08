@@ -56,6 +56,13 @@ pub struct BridgeRequestEvent {
     pub operational_fee: u64,
 }
 
+/// Emitted when the authority updates `ProgramConfig.version_string` after deploy.
+#[event]
+pub struct ProgramVersionUpdatedEvent {
+    /// Semver string (max 32 bytes on-chain).
+    pub version_string: String,
+}
+
 /// Emitted when fee config values are updated by the authority.
 #[event]
 pub struct FeeConfigUpdatedEvent {

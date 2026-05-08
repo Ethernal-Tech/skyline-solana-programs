@@ -60,6 +60,10 @@ pub const MAX_VALIDATORS_CHANGE: u32 = 10;
 #[constant]
 pub const FEE_CONFIG_SEED: &[u8] = b"fee_config";
 
+/// Seed string used to derive the global `ProgramConfig` PDA (version / deploy metadata).
+#[constant]
+pub const PROGRAM_CONFIG_SEED: &[u8] = b"program_config";
+
 /// Seed string used to derive TokenRegistry PDA
 #[constant]
 pub const TOKEN_REGISTRY_SEED: &[u8] = b"token_registry";

@@ -24,6 +24,10 @@ pub use bridge_transaction::*;
 pub mod update_fee_config;
 pub use update_fee_config::*;
 
+/// Update program version metadata on-chain (authority only)
+pub mod update_program_version;
+pub use update_program_version::*;
+
 /// Register a new lock/unlock token (authority only)
 pub mod register_lock_unlock_token;
 pub use register_lock_unlock_token::*;

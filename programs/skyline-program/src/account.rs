@@ -55,6 +55,22 @@ pub struct Vault {
     pub bump: u8,
 }
 
+/// Global program metadata stored in a well-known PDA (`PROGRAM_CONFIG_SEED`).
+///
+/// Initialized once in `initialize`. Other programs and clients can read this account
+/// without sending a transaction.
+#[account]
+#[derive(InitSpace)]
+pub struct ProgramConfig {
+    /// Human-readable semver copied from the deployed build (see `env!("CARGO_PKG_VERSION")` at init).
+    #[max_len(32)]
+    pub version_string: String,
+    /// Unix timestamp when this account was created (`Clock::unix_timestamp` at `initialize`).
+    pub deployed_at: i64,
+    /// Bridge authority at deployment (same signer as initial `FeeConfig.authority`).
+    pub authority: Pubkey,
+}
+
 /// Stores protocol-level fee configuration.
 /// Created once by the bridge authority via init_fee_config.
 /// Can be updated via update_fee_config.

@@ -1,7 +1,7 @@
-//! Initialize instruction for setting up the validator set, vault, and fee config.
+//! Initialize instruction for setting up the validator set, vault, fee config, and program metadata.
 //!
 //! Single entry point for full bridge system initialization.
-//! Creates: ValidatorSet PDA, Vault PDA, FeeConfig PDA.
+//! Creates: ValidatorSet PDA, Vault PDA, FeeConfig PDA, ProgramConfig PDA.
 
 use crate::*;
 
@@ -47,6 +47,16 @@ pub struct Initialize<'info> {
     )]
     pub fee_config: Account<'info, FeeConfig>,
 
+    /// Global program version / deploy metadata — one per program, read-only for integrations.
+    #[account(
+        init,
+        payer = signer,
+        space = ProgramConfig::INIT_SPACE + DISC as usize,
+        seeds = [PROGRAM_CONFIG_SEED],
+        bump
+    )]
+    pub program_config: Account<'info, ProgramConfig>,
+
     /// The treasury account that will receive operational fees
     /// CHECK: Stored as a Pubkey reference, no ownership constraint required
     pub treasury: UncheckedAccount<'info>,
@@ -70,6 +80,7 @@ impl<'info> Initialize<'info> {
         let validator_set = &mut ctx.accounts.validator_set;
         let vault = &mut ctx.accounts.vault;
         let fee_config = &mut ctx.accounts.fee_config;
+        let program_config = &mut ctx.accounts.program_config;
 
         // Check for duplicate validators by sorting and deduplicating
         let mut validators_copy = validators.clone();
@@ -119,6 +130,15 @@ impl<'info> Initialize<'info> {
         fee_config.authority = ctx.accounts.signer.key();
         fee_config.bump = ctx.bumps.fee_config;
         fee_config.relayer = ctx.accounts.relayer.key();
+
+        let version_str = env!("CARGO_PKG_VERSION");
+        require!(
+            version_str.len() <= 32,
+            CustomError::VersionStringTooLong
+        );
+        program_config.version_string = version_str.to_string();
+        program_config.deployed_at = Clock::get()?.unix_timestamp;
+        program_config.authority = ctx.accounts.signer.key();
 
         Ok(())
     }

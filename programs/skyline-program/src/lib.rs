@@ -30,6 +30,7 @@
 //! ## Instructions
 //!
 //! - `initialize`: Initialize the validator set and vault for the bridge system
+//! - `update_program_version`: Update on-chain program version metadata (authority only)
 //! - `bridge_request`: Create a cross-chain transfer request and transfer source tokens to vault
 //! - `create_or_approve_vsu`: Create or approve a validator set update (requires current validator approval)
 //! - `bridge_transaction`: Create or approve a bridging transaction to transfer tokens to recipients (requires validator approval)
@@ -57,6 +58,11 @@ pub use helpers::*;
 
 declare_id!("CkTNcuk9EELmuR65eCfzKfz8XpDvJ27FPFHauGHVD1E9");
 
+/// Returns the `ProgramConfig` PDA address and bump (`seeds = [PROGRAM_CONFIG_SEED]`).
+pub fn get_config_pda() -> (Pubkey, u8) {
+    Pubkey::find_program_address(&[PROGRAM_CONFIG_SEED], &ID)
+}
+
 #[program]
 pub mod skyline_program {
     use super::*;
@@ -65,6 +71,7 @@ pub mod skyline_program {
     ///   1. ValidatorSet — validators, threshold, bump
     ///   2. Vault        — bump
     ///   3. FeeConfig    — operational fee, relayer fee estimate, treasury, authority
+    ///   4. ProgramConfig — on-chain version metadata (readable without a tx)
     ///
     /// # Arguments
     /// * `ctx`                  - The instruction context
@@ -206,6 +213,24 @@ pub fn bridge_transaction<'info>(
             update_treasury,
             update_relayer,
         )
+    }
+
+    /// Updates `ProgramConfig.version_string` to match a new deployment.
+    ///
+    /// Program upgrades do not write to this PDA; the bridge authority must call this
+    /// after upgrading so integrations reading the account see the correct version.
+    ///
+    /// # Arguments
+    /// * `version_string` - Semver display string (at most 32 bytes)
+    ///
+    /// # Errors
+    /// * `Unauthorized`         - Signer is not `ProgramConfig.authority`
+    /// * `VersionStringTooLong`   - `version_string` exceeds storage limit
+    pub fn update_program_version(
+        ctx: Context<UpdateProgramVersion>,
+        version_string: String,
+    ) -> Result<()> {
+        UpdateProgramVersion::process_instruction(ctx, version_string)
     }
 
     pub fn register_lock_unlock_token(

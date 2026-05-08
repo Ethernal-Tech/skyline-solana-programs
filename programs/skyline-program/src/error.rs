@@ -206,4 +206,7 @@ pub enum CustomError {
 
     #[msg("Transfer count must be greater or equal than 1.")]
     InvalidTransferCount,
+
+    #[msg("Program version string from build exceeds max storage length")]
+    VersionStringTooLong,
 }

@@ -21,6 +21,7 @@ export const SEEDS = {
   VALIDATOR_SET: "validator-set",
   VAULT: "vault",
   FEE_CONFIG: "fee_config",
+  PROGRAM_CONFIG: "program_config",
   TOKEN_REGISTRY: "token_registry",
   TOKEN_ID_GUARD: "token_id_guard"
 } as const;
@@ -90,6 +91,13 @@ export interface FeeConfigData {
   relayer: web3.PublicKey;
   authority: web3.PublicKey;
   bump: number;
+}
+
+/** On-chain ProgramConfig account shape (version metadata PDA) */
+export interface ProgramConfigData {
+  versionString: string;
+  deployedAt: BN;
+  authority: web3.PublicKey;
 }
 
 /** On-chain TokenRegistry account shape */
@@ -176,6 +184,14 @@ export class PDAs {
     )[0];
   }
 
+  /** ProgramConfig PDA — global version / deploy metadata, one per program */
+  programConfig(): web3.PublicKey {
+    return web3.PublicKey.findProgramAddressSync(
+      [Buffer.from(SEEDS.PROGRAM_CONFIG)],
+      this.programId
+    )[0];
+  }
+
   /** TokenRegistry PDA — one per registered mint */
   tokenRegistry(mint: web3.PublicKey): web3.PublicKey {
     return web3.PublicKey.findProgramAddressSync(
@@ -231,6 +247,16 @@ export class AccountFetchers {
     pda: web3.PublicKey
   ): Promise<FeeConfigData | null> {
     return await this.program.account.feeConfig.fetchNullable(pda);
+  }
+
+  async getProgramConfig(pda: web3.PublicKey): Promise<ProgramConfigData> {
+    return await this.program.account.programConfig.fetch(pda);
+  }
+
+  async getProgramConfigNullable(
+    pda: web3.PublicKey
+  ): Promise<ProgramConfigData | null> {
+    return await this.program.account.programConfig.fetchNullable(pda);
   }
 
   async getTokenRegistry(pda: web3.PublicKey): Promise<TokenRegistryData> {
@@ -1897,6 +1923,11 @@ export class SkylineTestFixture {
    */
   async getFeeConfig(): Promise<FeeConfigData> {
     return await this.accounts.getFeeConfig(this.pdas.feeConfig());
+  }
+
+  /** On-chain program version metadata (`ProgramConfig` PDA). */
+  async getProgramConfig(): Promise<ProgramConfigData> {
+    return await this.accounts.getProgramConfig(this.pdas.programConfig());
   }
 
   /**
