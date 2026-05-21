@@ -151,26 +151,17 @@ pub enum CustomError {
     #[msg("Unauthorized action attempted")]
     Unauthorized,
 
-    #[msg("Relayer account does not match fee config")]
-    InvalidRelayer,
-
     #[msg("Fee values overflow when combined — reduce min_operational_fee or bridge_fee")]
     FeeConfigOverflow,
 
     #[msg("Bridging amount is below the minimum threshold")]
     BridgingAmountTooLow,
 
-    /// Fired when TokenIdGuard PDA already exists for the given token_id.
+    /// Fired when TokenRegistry PDA already exists for the given token_id.
     /// Gateway parity: TokenIdAlreadyRegistered(_tokenId) revert.
     /// Two mints sharing a token_id would break destination-chain routing.
     #[msg("Token ID is already registered to another mint")]
     TokenIdAlreadyRegistered,
-
-    /// Fired when TokenRegistry PDA already exists for the given mint.
-    /// Prevents the same mint from being registered twice under
-    /// different token_ids — which would also corrupt routing.
-    #[msg("This mint is already registered in the token registry")]
-    MintAlreadyRegistered,
 
     /// Fired when bridge_request is called with a mint that has no
     /// TokenRegistry PDA. Only whitelisted mints can be bridged.
@@ -209,4 +200,15 @@ pub enum CustomError {
 
     #[msg("Program version string from build exceeds max storage length")]
     VersionStringTooLong,
+
+    /// Fired when a native-SOL transfer in `bridge_transaction` would drop the
+    /// vault PDA below its rent-exempt minimum, or simply requests more
+    /// lamports than the vault holds.
+    #[msg("Vault has insufficient lamports to fulfil the native SOL transfer")]
+    InsufficientVaultLamports,
+
+    /// Fired when the ed25519 signed payload cannot be decoded or does not match
+    /// the bridge_transaction instruction arguments.
+    #[msg("Validator-signed payload is invalid or inconsistent with the instruction")]
+    InvalidSignedPayload,
 }

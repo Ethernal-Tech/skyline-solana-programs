@@ -23,10 +23,6 @@ pub struct UpdateFeeConfig<'info> {
     /// New treasury account — only needed when updating treasury.
     /// CHECK: Stored as Pubkey reference. Validated to be non-default below.
     pub new_treasury: UncheckedAccount<'info>,
-
-    /// New relayer account — only needed when updating relayer.
-    /// CHECK: Stored as Pubkey reference. Validated to be non-default below.
-    pub new_relayer: UncheckedAccount<'info>,
 }
 
 impl<'info> UpdateFeeConfig<'info> {
@@ -40,7 +36,7 @@ impl<'info> UpdateFeeConfig<'info> {
     ///   min_operational_fee + bridge_fee must not overflow u64.
     ///   This is checked here so bridge_request can use .expect() safely.
     ///
-    /// # Treasury / Relayer update
+    /// # Treasury update
     ///   Pass the new address in the account AND Some(true) in the flag.
     ///   Passing None keeps the existing address unchanged.
     ///   The account field must always be provided (Anchor requires it),
@@ -50,7 +46,6 @@ impl<'info> UpdateFeeConfig<'info> {
         min_operational_fee: Option<u64>,
         bridge_fee: Option<u64>,
         update_treasury: Option<bool>,
-        update_relayer: Option<bool>,
     ) -> Result<()> {
         let fee_config = &mut ctx.accounts.fee_config;
 
@@ -75,26 +70,15 @@ impl<'info> UpdateFeeConfig<'info> {
             fee_config.treasury
         };
 
-        // Resolve relayer
-        let new_relayer = if update_relayer.unwrap_or(false) {
-            let key = ctx.accounts.new_relayer.key();
-            require!(key != Pubkey::default(), CustomError::InvalidRelayer);
-            key
-        } else {
-            fee_config.relayer
-        };
-
         // Write updated values to the fee config account
         fee_config.min_operational_fee = new_op_fee;
         fee_config.bridge_fee = new_bridge_fee;
         fee_config.treasury = new_treasury;
-        fee_config.relayer = new_relayer;
 
         emit!(FeeConfigUpdatedEvent {
             min_operational_fee: new_op_fee,
             bridge_fee: new_bridge_fee,
             treasury: new_treasury,
-            relayer: new_relayer,
         });
 
         Ok(())

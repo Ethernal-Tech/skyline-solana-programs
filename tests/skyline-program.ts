@@ -177,9 +177,6 @@ describe("skyline-program", () => {
             expect(fc.treasury.toBase58()).to.equal(
               treasury.publicKey.toBase58()
             );
-            expect(fc.relayer.toBase58()).to.equal(
-              relayer.publicKey.toBase58()
-            );
 
             const pc = await fixture.getProgramConfig();
             expect(pc.versionString).to.equal("0.1.0");
@@ -201,16 +198,10 @@ describe("skyline-program", () => {
           }
         }
 
-        // Not yet initialized — airdrop to treasury + relayer so they can
-        // receive lamports in bridge_request tests
+        // Not yet initialized — airdrop to treasury so it can receive lamports
         await airdrop(
           provider.connection,
           treasury.publicKey,
-          1 * web3.LAMPORTS_PER_SOL
-        );
-        await airdrop(
-          provider.connection,
-          relayer.publicKey,
           1 * web3.LAMPORTS_PER_SOL
         );
 
@@ -241,7 +232,6 @@ describe("skyline-program", () => {
         expect(fc.minOperationalFee.toNumber()).to.equal(MIN_OPERATIONAL_FEE);
         expect(fc.bridgeFee.toNumber()).to.equal(BRIDGE_FEE);
         expect(fc.treasury.toBase58()).to.equal(treasury.publicKey.toBase58());
-        expect(fc.relayer.toBase58()).to.equal(relayer.publicKey.toBase58());
         assertValidBump(fc.bump);
 
         const pc = await fixture.getProgramConfig();
@@ -448,25 +438,6 @@ describe("skyline-program", () => {
         );
       });
 
-      it("fails when relayer address doesn't match fee_config", async () => {
-        const amount = new BN(100_000);
-        const requiredFee = await fixture.requiredFee();
-        const fakeRelayer = web3.Keypair.generate().publicKey;
-
-        await fixture.bridgeRequest.expectError(
-          {
-            amount,
-            receiver,
-            destinationChain,
-            mint: mint1,
-            fees: requiredFee,
-            signer: user1,
-            relayerOverride: fakeRelayer
-          },
-          "InvalidRelayer"
-        );
-      });
-
       it("fails when vault ATA address is incorrect", async () => {
         const amount = new BN(100_000);
         const requiredFee = await fixture.requiredFee();
@@ -651,7 +622,7 @@ describe("skyline-program", () => {
         );
       });
 
-      it("fee paid to treasury and relayer — splits correctly", async () => {
+      it("fee paid to treasury and vault — splits correctly", async () => {
         const amount = new BN(75_000);
         const requiredFee = await fixture.requiredFee();
         const fc = await fixture.getFeeConfig();
@@ -659,7 +630,7 @@ describe("skyline-program", () => {
         const treasuryBefore = await provider.connection.getBalance(
           fc.treasury
         );
-        const relayerBefore = await provider.connection.getBalance(fc.relayer);
+        const vaultBefore = await provider.connection.getBalance(vaultPDA);
 
         await fixture.bridgeRequest.call({
           amount,
@@ -671,10 +642,10 @@ describe("skyline-program", () => {
         });
 
         const treasuryAfter = await provider.connection.getBalance(fc.treasury);
-        const relayerAfter = await provider.connection.getBalance(fc.relayer);
+        const vaultAfter = await provider.connection.getBalance(vaultPDA);
 
         const treasuryIncrease = treasuryAfter - treasuryBefore;
-        const relayerIncrease = relayerAfter - relayerBefore;
+        const vaultIncrease = vaultAfter - vaultBefore;
 
         // treasury gets: min_op_fee (since requiredFee = min_op_fee + bridge_fee)
         expect(treasuryIncrease).to.equal(
@@ -682,10 +653,10 @@ describe("skyline-program", () => {
           "treasury received op fee"
         );
 
-        // relayer gets: bridge_fee
-        expect(relayerIncrease).to.equal(
+        // bridge_fee is escrowed on the vault PDA until bridge_transaction
+        expect(vaultIncrease).to.equal(
           fc.bridgeFee.toNumber(),
-          "relayer received bridge fee"
+          "vault received bridge fee escrow"
         );
       });
 

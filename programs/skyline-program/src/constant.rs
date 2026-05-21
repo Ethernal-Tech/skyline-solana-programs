@@ -75,3 +75,13 @@ pub const TOKEN_ID_GUARD_SEED: &[u8] = b"token_id_guard";
 /// Canonical wrapped SOL (wSOL) SPL mint address.
 #[constant]
 pub const WSOL_MINT: Pubkey = pubkey!("So11111111111111111111111111111111111111112");
+
+/// Sentinel value used in `bridge_transaction.mints` to signal a native SOL
+/// transfer (lamports paid directly from the vault PDA to the recipient
+/// wallet) rather than an SPL token mint/burn or lock/unlock.
+///
+/// Equal to `Pubkey::default()` and to the System Program ID. Cannot collide
+/// with any valid SPL mint, and follows the same convention used by
+/// Wormhole / Jupiter / other Solana bridges for "native SOL".
+#[constant]
+pub const NATIVE_SOL_MINT: Pubkey = pubkey!("11111111111111111111111111111111");

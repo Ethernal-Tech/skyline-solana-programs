@@ -78,20 +78,20 @@ pub struct RegisterMintBurnToken<'info> {
     pub metadata: UncheckedAccount<'info>,
 
     // ── TokenRegistry PDA ─────────────────────────────────────────────────────
-    /// One PDA per mint — enforces mint uniqueness across the registry.
-    /// Anchor init fails with AlreadyInUse if this mint was already registered.
-    /// PDA: [TOKEN_REGISTRY_SEED, mint.key()]
+    /// One PDA per token_id — enforces token_id uniqueness across the registry.
+    /// Anchor init fails with AlreadyInUse if this token_id was already registered.
+    /// PDA: [TOKEN_REGISTRY_SEED, token_id.to_le_bytes()]
     #[account(
         init,
         payer = authority,
         space = 8 + TokenRegistry::INIT_SPACE,
-        seeds = [TOKEN_REGISTRY_SEED, mint.key().as_ref()],
+        seeds = [TOKEN_REGISTRY_SEED, token_id.to_le_bytes().as_ref()],
         bump,
     )]
     pub token_registry: Account<'info, TokenRegistry>,
 
     // ── TokenIdGuard PDA ──────────────────────────────────────────────────────
-    /// One PDA per token_id — enforces token_id uniqueness across the registry.
+    /// One PDA per token_id — retained for compatibility with existing clients.
     /// Anchor init fails with AlreadyInUse if this token_id is already taken.
     /// PDA: [TOKEN_ID_GUARD_SEED, token_id.to_le_bytes()]
     #[account(
@@ -120,8 +120,8 @@ impl<'info> RegisterMintBurnToken<'info> {
     /// # What this does
     ///   1. Creates SPL mint with vault as mint_authority (via Anchor init)
     ///   2. Creates Metaplex metadata via CPI (name, symbol, uri)
-    ///   3. Creates TokenRegistry PDA  (is_lock_unlock = false)
-    ///   4. Creates TokenIdGuard PDA   (uniqueness sentinel)
+    ///   3. Creates TokenRegistry PDA  (is_lock_unlock = false, indexed by token_id)
+    ///   4. Creates TokenIdGuard PDA   (token_id compatibility sentinel)
     ///   5. Emits MintBurnTokenRegisteredEvent
     ///
     /// # Arguments
@@ -144,6 +144,8 @@ impl<'info> RegisterMintBurnToken<'info> {
         symbol: String,
         uri: String,
     ) -> Result<()> {
+        require!(token_id != 0, CustomError::InvalidMintToken);
+
         let vault = &ctx.accounts.vault;
         let mint = &ctx.accounts.mint;
         let token_registry = &mut ctx.accounts.token_registry;

@@ -88,7 +88,6 @@ export interface FeeConfigData {
   minOperationalFee: BN;
   bridgeFee: BN;
   treasury: web3.PublicKey;
-  relayer: web3.PublicKey;
   authority: web3.PublicKey;
   bump: number;
 }
@@ -192,10 +191,12 @@ export class PDAs {
     )[0];
   }
 
-  /** TokenRegistry PDA — one per registered mint */
-  tokenRegistry(mint: web3.PublicKey): web3.PublicKey {
+  /** TokenRegistry PDA — one per registered token_id */
+  tokenRegistry(tokenId: number): web3.PublicKey {
+    const idBuf = Buffer.alloc(2);
+    idBuf.writeUInt16LE(tokenId, 0);
     return web3.PublicKey.findProgramAddressSync(
-      [Buffer.from(SEEDS.TOKEN_REGISTRY), mint.toBuffer()],
+      [Buffer.from(SEEDS.TOKEN_REGISTRY), idBuf],
       this.programId
     )[0];
   }
@@ -359,6 +360,30 @@ export class TokenBalanceHelper {
 // ASSERTION HELPERS
 // ============================================================================
 
+/** Extract Anchor error code from RPC / simulation failures. */
+export function anchorErrorCode(e: any): string | undefined {
+  const candidates = [
+    e?.error?.errorCode?.code,
+    e?.errorCode?.code,
+    e?.error?.error?.errorCode?.code,
+    typeof e?.code === "string" ? e.code : undefined
+  ];
+  for (const code of candidates) {
+    if (code) {
+      return code;
+    }
+  }
+
+  const logs = [
+    ...(e?.logs ?? []),
+    ...(e?.error?.logs ?? []),
+    e?.message ?? "",
+    e?.error?.message ?? ""
+  ].join("\n");
+  const match = logs.match(/Error Code: (\w+)/);
+  return match?.[1];
+}
+
 /**
  * Assert validator set matches expected state
  */
@@ -456,10 +481,11 @@ export function assertBridgingTransactionState(
 export interface InitializeParams {
   validators: web3.PublicKey[];
   lastId?: number | BN;
-  minOperationalFee?: number | BN; // ← NEW (lamports, defaults to 0)
-  bridgeFee?: number | BN; // ← NEW (lamports, defaults to 0)
-  treasury?: web3.PublicKey; // ← NEW (defaults to owner pubkey)
-  relayer?: web3.PublicKey; // ← NEW (defaults to owner pubkey)
+  minOperationalFee?: number | BN;
+  bridgeFee?: number | BN;
+  treasury?: web3.PublicKey;
+  /** Required by older IDLs; ignored when the program no longer has this account. */
+  relayer?: web3.PublicKey;
 }
 
 export class InitializeHelper {
@@ -497,15 +523,16 @@ export class InitializeHelper {
         : params.bridgeFee;
 
     const treasury = params.treasury ?? this.owner.publicKey;
-    const relayer = params.relayer ?? this.owner.publicKey;
+    const relayer = params.relayer ?? treasury;
 
     return this.program.methods
       .initialize(params.validators, lastIdBN, minOpFee, bridgeFee)
-      .accounts({
+      .accountsPartial({
         signer: this.owner.publicKey,
         treasury,
+        // Older deployed builds still declare this unchecked account in the IDL.
         relayer
-      });
+      } as Record<string, web3.PublicKey>);
   }
 
   async call(
@@ -516,7 +543,7 @@ export class InitializeHelper {
     return await this.buildCall({ validators, lastId, ...options }).rpc();
   }
 
-  /** Full-params call for tests that need to set fees / treasury / relayer */
+  /** Full-params call for tests that need to set fees / treasury */
   async callFull(params: InitializeParams): Promise<string> {
     return await this.buildCall(params).rpc();
   }
@@ -533,7 +560,10 @@ export class InitializeHelper {
       await this.buildCall({ validators, lastId, ...options }).rpc();
     } catch (e: any) {
       thrown = true;
-      expect(e.error?.errorCode?.code).to.equal(expectedErrorCode);
+      const code = anchorErrorCode(e);
+      expect(code, `expected ${expectedErrorCode}, logs: ${(e?.logs ?? []).join("\n")}`).to.equal(
+        expectedErrorCode
+      );
     }
     if (!thrown) {
       throw new Error(
@@ -659,12 +689,9 @@ export class TokenRegistryHelper {
   /**
    * Check if a mint is already registered
    */
-  async isRegistered(mint: web3.PublicKey, pdas: PDAs): Promise<boolean> {
-    const pda = pdas.tokenRegistry(mint);
-    const account = await this.program.account.tokenRegistry
-      .fetchNullable(pda)
-      .catch(() => null);
-    return account !== null;
+  async isRegistered(mint: web3.PublicKey, _pdas: PDAs): Promise<boolean> {
+    const accounts = await this.program.account.tokenRegistry.all();
+    return accounts.some(({ account }) => account.mint.equals(mint));
   }
 }
 
@@ -682,6 +709,7 @@ export interface TransferItem {
 export interface BridgeTransactionParams {
   transfers: TransferItem[];
   mints: web3.PublicKey[];
+  tokenIds?: (number | null)[];
   batchId: number | BN;
   validators: web3.Keypair[];
   vaultPDA: web3.PublicKey;
@@ -739,10 +767,12 @@ export class BridgeTransactionHelper {
     this.owner = owner;
   }
 
-  /** Derive the canonical token_registry PDA for a mint */
-  tokenRegistryPDA(mint: web3.PublicKey): web3.PublicKey {
+  /** Derive the canonical token_registry PDA for a token_id */
+  tokenRegistryPDA(tokenId: number): web3.PublicKey {
+    const idBuf = Buffer.alloc(2);
+    idBuf.writeUInt16LE(tokenId, 0);
     return web3.PublicKey.findProgramAddressSync(
-      [Buffer.from(SEEDS.TOKEN_REGISTRY), mint.toBuffer()],
+      [Buffer.from(SEEDS.TOKEN_REGISTRY), idBuf],
       this.program.programId
     )[0];
   }
@@ -754,7 +784,7 @@ export class BridgeTransactionHelper {
    * call sendWithSections() directly.
    */
   buildSections(params: BridgeTransactionParams): BridgeTxRemainingAccounts {
-    const { transfers, mints, validators, vaultPDA } = params;
+    const { transfers, mints, tokenIds, validators, vaultPDA } = params;
 
     // Section 1 — validator signers (isSigner = true)
     const validatorMetas = validators.map((v) => ({
@@ -777,12 +807,19 @@ export class BridgeTransactionHelper {
       isWritable: false
     }));
 
-    // Section 4 — token registry PDAs (one per mint, read-only)
-    const registryMetas = mints.map((m) => ({
-      pubkey: this.tokenRegistryPDA(m),
-      isSigner: false,
-      isWritable: false
-    }));
+    // Section 4 — token registry PDAs (one per token_id, read-only).
+    // Native SOL slots do not have registries but still keep a placeholder.
+    const registryMetas = mints.map((m, i) => {
+      const tokenId = tokenIds?.[i];
+      return {
+        pubkey:
+          m.equals(web3.SystemProgram.programId) || tokenId == null
+            ? web3.SystemProgram.programId
+            : this.tokenRegistryPDA(tokenId),
+        isSigner: false,
+        isWritable: false
+      };
+    });
 
     // Section 5 — recipient ATAs (one per transfer, writable)
     const recipientAtaMetas = transfers.map((t) => ({
@@ -848,11 +885,7 @@ export class BridgeTransactionHelper {
     const remainingAccounts = this.flattenSections(sections);
 
     return await this.program.methods
-      .bridgeTransaction(
-        this.serializeTransfers(params.transfers),
-        params.mints,
-        batchIdBN
-      )
+      .bridgeTransaction()
       .accounts({
         payer: this.owner.publicKey
       })
@@ -872,11 +905,7 @@ export class BridgeTransactionHelper {
 
     // 1. Build the instruction WITHOUT sending (.instruction() not .rpc())
     const ix = await this.program.methods
-      .bridgeTransaction(
-        this.serializeTransfers(params.transfers),
-        params.mints,
-        batchIdBN
-      )
+      .bridgeTransaction()
       .accounts({ payer: this.owner.publicKey })
       .remainingAccounts(remainingAccounts)
       // NOTE: no .signers() here — we sign manually below
@@ -941,7 +970,7 @@ export class BridgeTransactionHelper {
     const remainingAccounts = this.flattenSections(sections);
 
     return await this.program.methods
-      .bridgeTransaction(this.serializeTransfers(transfers), mints, batchIdBN)
+      .bridgeTransaction()
       .accounts({ payer: this.owner.publicKey })
       .signers(validators)
       .remainingAccounts(remainingAccounts)
@@ -958,7 +987,7 @@ export class BridgeTransactionHelper {
     const remainingAccounts = this.flattenSections(sections);
     const batchIdBN = typeof batchId === "number" ? new BN(batchId) : batchId;
     const ix = await this.program.methods
-      .bridgeTransaction(this.serializeTransfers(transfers), mints, batchIdBN)
+      .bridgeTransaction()
       .accounts({ payer: this.owner.publicKey })
       .remainingAccounts(remainingAccounts)
       .instruction();
@@ -1106,6 +1135,7 @@ export class MintHelper {
       amount
     );
   }
+
   /**
    * Freeze a token account (requires freeze authority)
    */
@@ -1190,8 +1220,6 @@ export interface BridgeRequestParams {
   signer?: web3.Keypair; // Optional, defaults to owner
   /** Override treasury (default: from fee_config) */
   treasuryOverride?: web3.PublicKey;
-  /** Override relayer (default: from fee_config) */
-  relayerOverride?: web3.PublicKey;
 }
 
 // ============================================================================
@@ -1221,34 +1249,39 @@ export class BridgeRequestHelper {
     )[0];
   }
 
-  /** Derive the canonical token_registry PDA for a mint */
-  tokenRegistryPDA(mint: web3.PublicKey): web3.PublicKey {
+  /** Derive the canonical token_registry PDA for a token_id */
+  tokenRegistryPDA(tokenId: number): web3.PublicKey {
+    const idBuf = Buffer.alloc(2);
+    idBuf.writeUInt16LE(tokenId, 0);
     return web3.PublicKey.findProgramAddressSync(
-      [Buffer.from(SEEDS.TOKEN_REGISTRY), mint.toBuffer()],
+      [Buffer.from(SEEDS.TOKEN_REGISTRY), idBuf],
       this.program.programId
     )[0];
   }
 
+  /** Resolve a registry PDA by mint for tests that only model source-chain mint input. */
+  private async tokenRegistryPDAForMint(
+    mint: web3.PublicKey
+  ): Promise<web3.PublicKey> {
+    const accounts = await this.program.account.tokenRegistry.all();
+    const match = accounts.find(({ account }) => account.mint.equals(mint));
+    return match?.publicKey ?? this.tokenRegistryPDA(0);
+  }
+
   /**
-   * Resolve treasury + relayer from the on-chain fee_config.
+   * Resolve treasury from the on-chain fee_config.
    * Called lazily when not overridden.
    */
-  private async resolveFeeAccounts(): Promise<{
-    treasury: web3.PublicKey;
-    relayer: web3.PublicKey;
-  }> {
+  private async resolveTreasury(): Promise<web3.PublicKey> {
     const feeConfig = await this.program.account.feeConfig.fetch(
       this.feeConfigPDA()
     );
-    return {
-      treasury: feeConfig.treasury,
-      relayer: feeConfig.relayer
-    };
+    return feeConfig.treasury;
   }
 
   /**
    * Call bridgeRequest instruction.
-   * Treasury and relayer are resolved automatically from fee_config unless overridden.
+   * Treasury is resolved automatically from fee_config unless overridden.
    */
   async call(params: BridgeRequestParams): Promise<string> {
     const amountBN =
@@ -1267,7 +1300,10 @@ export class BridgeRequestHelper {
       true
     );
 
-    const { treasury, relayer } = await this.resolveFeeAccounts();
+    const treasury =
+      params.treasuryOverride ?? (await this.resolveTreasury());
+
+    const tokenRegistry = await this.tokenRegistryPDAForMint(params.mint);
 
     return await this.program.methods
       .bridgeRequest(amountBN, params.receiver, params.destinationChain, feesBN)
@@ -1276,10 +1312,9 @@ export class BridgeRequestHelper {
         signersAta: signerAta,
         vaultAta: vaultAta,
         mint: params.mint,
-        tokenRegistry: this.tokenRegistryPDA(params.mint),
+        tokenRegistry,
         feeConfig: this.feeConfigPDA(),
-        treasury: params.treasuryOverride ?? treasury,
-        relayer: params.relayerOverride ?? relayer
+        treasury
       })
       .signers(signer === this.owner.payer ? [] : [signer])
       .rpc();
@@ -1301,7 +1336,6 @@ export class BridgeRequestHelper {
       tokenRegistry?: web3.PublicKey;
       feeConfig?: web3.PublicKey;
       treasury?: web3.PublicKey;
-      relayer?: web3.PublicKey;
     },
     signers: web3.Keypair[]
   ): Promise<string> {
@@ -1313,14 +1347,11 @@ export class BridgeRequestHelper {
         ? new BN(accounts.fees)
         : accounts.fees;
 
-    // Resolve defaults from fee_config when not overridden
-    let treasury = accounts.treasury;
-    let relayer = accounts.relayer;
-    if (!treasury || !relayer) {
-      const resolved = await this.resolveFeeAccounts();
-      treasury = treasury ?? resolved.treasury;
-      relayer = relayer ?? resolved.relayer;
-    }
+    const treasury =
+      accounts.treasury ?? (await this.resolveTreasury());
+
+    const tokenRegistry =
+      accounts.tokenRegistry ?? (await this.tokenRegistryPDAForMint(accounts.mint));
 
     return await this.program.methods
       .bridgeRequest(amountBN, receiver, destinationChain, feesBN)
@@ -1329,11 +1360,9 @@ export class BridgeRequestHelper {
         signersAta: accounts.signersAta,
         vaultAta: accounts.vaultAta,
         mint: accounts.mint,
-        tokenRegistry:
-          accounts.tokenRegistry ?? this.tokenRegistryPDA(accounts.mint),
+        tokenRegistry,
         feeConfig: accounts.feeConfig ?? this.feeConfigPDA(),
-        treasury,
-        relayer
+        treasury
       })
       .signers(signers)
       .rpc();
@@ -1355,6 +1384,85 @@ export class BridgeRequestHelper {
     if (!thrown) {
       throw new Error(
         `Expected bridgeRequest to fail with ${expectedErrorCode}, but it succeeded`
+      );
+    }
+  }
+}
+
+// ============================================================================
+// UPDATE FEE CONFIG
+// ============================================================================
+
+export interface UpdateFeeConfigParams {
+  minOperationalFee?: number | BN | null;
+  bridgeFee?: number | BN | null;
+  updateTreasury?: boolean | null;
+  newTreasury?: web3.PublicKey;
+  /** Signer — must be fee_config.authority. Defaults to owner. */
+  authority?: web3.Keypair;
+}
+
+export class UpdateFeeConfigHelper {
+  private program: Program<SkylineProgram>;
+  private owner: anchor.Wallet;
+  private feeConfigPDA: web3.PublicKey;
+
+  constructor(program: Program<SkylineProgram>, owner: anchor.Wallet) {
+    this.program = program;
+    this.owner = owner;
+    this.feeConfigPDA = web3.PublicKey.findProgramAddressSync(
+      [Buffer.from(SEEDS.FEE_CONFIG)],
+      program.programId
+    )[0];
+  }
+
+  private toOptionBN(
+    value: number | BN | null | undefined
+  ): BN | null {
+    if (value === undefined || value === null) {
+      return null;
+    }
+    return typeof value === "number" ? new BN(value) : value;
+  }
+
+  private buildCall(params: UpdateFeeConfigParams) {
+    const authority = params.authority ?? this.owner.payer;
+    const newTreasury =
+      params.newTreasury ?? this.owner.publicKey;
+
+    return this.program.methods
+      .updateFeeConfig(
+        this.toOptionBN(params.minOperationalFee),
+        this.toOptionBN(params.bridgeFee),
+        params.updateTreasury ?? null
+      )
+      .accountsPartial({
+        authority: authority.publicKey,
+        feeConfig: this.feeConfigPDA,
+        newTreasury
+      })
+      .signers(authority === this.owner.payer ? [] : [authority]);
+  }
+
+  async call(params: UpdateFeeConfigParams = {}): Promise<string> {
+    return await this.buildCall(params).rpc();
+  }
+
+  async expectError(
+    params: UpdateFeeConfigParams,
+    expectedErrorCode: string
+  ): Promise<void> {
+    let thrown = false;
+    try {
+      await this.buildCall(params).rpc();
+    } catch (e: any) {
+      thrown = true;
+      const code = e.error?.errorCode?.code ?? e.errorCode?.code;
+      expect(code).to.equal(expectedErrorCode);
+    }
+    if (!thrown) {
+      throw new Error(
+        `Expected updateFeeConfig to fail with ${expectedErrorCode}, but it succeeded`
       );
     }
   }
@@ -1396,14 +1504,6 @@ export class HotWalletIncrementHelper {
     this.vaultPDA = vaultPDA;
   }
 
-  /** Derive the canonical token_registry PDA for a mint */
-  tokenRegistryPDA(mint: web3.PublicKey): web3.PublicKey {
-    return web3.PublicKey.findProgramAddressSync(
-      [Buffer.from(SEEDS.TOKEN_REGISTRY), mint.toBuffer()],
-      this.program.programId
-    )[0];
-  }
-
   /**
    * Call the hot_wallet_increment instruction.
    *
@@ -1420,17 +1520,18 @@ export class HotWalletIncrementHelper {
     const vaultAta =
       params.vaultAtaOverride ??
       getAssociatedTokenAddressSync(params.mint, this.vaultPDA, true);
-    const tokenRegistry =
-      params.tokenRegistryOverride ?? this.tokenRegistryPDA(params.mint);
+
+    // Native-SOL branch ignores ATA accounts but Anchor still requires them to be writable.
+    const isNativeSol = params.mint.equals(web3.SystemProgram.programId);
+    const nativePlaceholder = signer.publicKey;
 
     return await this.program.methods
       .hotWalletIncrement(amountBN)
       .accountsPartial({
         signer: signer.publicKey,
-        signersAta: signerAta,
-        vaultAta,
-        mint: params.mint,
-        tokenRegistry
+        signersAta: isNativeSol ? nativePlaceholder : signerAta,
+        vaultAta: isNativeSol ? nativePlaceholder : vaultAta,
+        mint: params.mint
       })
       .signers(signer === this.owner.payer ? [] : [signer])
       .rpc();
@@ -1871,6 +1972,7 @@ export class SkylineTestFixture {
   public bridgeVSU: BridgeVSUHelper;
   public tokenRegistry: TokenRegistryHelper;
   public hotWalletIncrement: HotWalletIncrementHelper;
+  public updateFeeConfig: UpdateFeeConfigHelper;
 
   constructor(ctx: TestContext) {
     this.pdas = new PDAs(ctx.program.programId);
@@ -1896,6 +1998,7 @@ export class SkylineTestFixture {
       ctx.owner,
       this.pdas.vault()
     );
+    this.updateFeeConfig = new UpdateFeeConfigHelper(ctx.program, ctx.owner);
   }
 
   /** Check if validator set is already initialized */
@@ -1919,7 +2022,7 @@ export class SkylineTestFixture {
 
   /**
    * Fetch on-chain fee_config.
-   * Useful in tests that need to read treasury/relayer/fee values.
+   * Useful in tests that need to read treasury/fee values.
    */
   async getFeeConfig(): Promise<FeeConfigData> {
     return await this.accounts.getFeeConfig(this.pdas.feeConfig());

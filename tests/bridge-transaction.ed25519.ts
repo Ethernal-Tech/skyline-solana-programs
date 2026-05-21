@@ -13,6 +13,7 @@ import {
 import {
   SkylineTestFixture,
   TestContext,
+  airdrop,
   generateValidators
 } from "./fixtures";
 
@@ -26,6 +27,45 @@ function u16(n: number): Buffer {
   const b = Buffer.alloc(2);
   b.writeUInt16LE(n, 0);
   return b;
+}
+
+/** gagliardetto/binary slice length: uvarint. */
+function uvarint(n: number): Buffer {
+  const out: number[] = [];
+  let v = n;
+  while (v >= 0x80) {
+    out.push((v & 0x7f) | 0x80);
+    v >>>= 7;
+  }
+  out.push(v);
+  return Buffer.from(out);
+}
+
+function u64LE(n: bigint): Buffer {
+  const b = Buffer.alloc(8);
+  b.writeBigUInt64LE(n, 0);
+  return b;
+}
+
+type SolanaPayloadInput = {
+  blockhash: Uint8Array;
+  receivers: { address: Uint8Array; tokenId: number; amount: bigint }[];
+  feeAmount: bigint;
+  batchId: bigint;
+};
+
+function encodeSolanaPayload(payload: SolanaPayloadInput): Buffer {
+  const receiverParts: Buffer[] = [];
+  for (const r of payload.receivers) {
+    receiverParts.push(Buffer.from(r.address), u16(r.tokenId), u64LE(r.amount));
+  }
+  return Buffer.concat([
+    Buffer.from(payload.blockhash),
+    uvarint(payload.receivers.length),
+    ...receiverParts,
+    u64LE(payload.feeAmount),
+    u64LE(payload.batchId)
+  ]);
 }
 
 function buildEd25519BatchIx(signers: web3.Keypair[], message: Buffer) {
@@ -112,13 +152,28 @@ describe("bridge-transaction ed25519 flow", () => {
   let validatorSigners: web3.Keypair[] = [];
   let outsideSigner: web3.Keypair;
 
-  const makeBatchMessage = (batchId: BN) => {
-    const buf = Buffer.alloc(8);
-    buf.writeBigUInt64LE(BigInt(batchId.toString()), 0);
-    return buf;
-  };
+  const makeSignedPayload = (
+    batchId: BN,
+    transfers: TransferItem[],
+    tokenIds: number[],
+    feeAmount = 0n
+  ) =>
+    encodeSolanaPayload({
+      blockhash: Buffer.alloc(32, 7),
+      receivers: transfers.map((t) => ({
+        address: t.recipient.toBytes(),
+        tokenId: tokenIds[t.mintIndex],
+        amount: BigInt(t.amount.toString())
+      })),
+      feeAmount,
+      batchId: BigInt(batchId.toString())
+    });
 
-  const buildRemainingAccounts = (transfers: TransferItem[], mints: web3.PublicKey[]) => {
+  const buildRemainingAccounts = (
+    transfers: TransferItem[],
+    mints: web3.PublicKey[],
+    tokenIds: number[]
+  ) => {
     const mintMetas = mints.map((m) => ({
       pubkey: m,
       isSigner: false,
@@ -129,8 +184,8 @@ describe("bridge-transaction ed25519 flow", () => {
       isSigner: false,
       isWritable: false
     }));
-    const registryMetas = mints.map((m) => ({
-      pubkey: fixture.pdas.tokenRegistry(m),
+    const registryMetas = tokenIds.map((tokenId) => ({
+      pubkey: fixture.pdas.tokenRegistry(tokenId),
       isSigner: false,
       isWritable: false
     }));
@@ -159,15 +214,7 @@ describe("bridge-transaction ed25519 flow", () => {
     batchId: BN
   ) => {
     return await program.methods
-      .bridgeTransaction(
-        transfers.map((t) => ({
-          recipient: t.recipient,
-          mintIndex: t.mintIndex,
-          amount: t.amount
-        })),
-        mints,
-        batchId
-      )
+      .bridgeTransaction()
       .accountsPartial({
         payer: owner.publicKey,
         validatorSet: fixture.pdas.validatorSet(),
@@ -177,7 +224,7 @@ describe("bridge-transaction ed25519 flow", () => {
         associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
         instructions: web3.SYSVAR_INSTRUCTIONS_PUBKEY
       })
-      .remainingAccounts(buildRemainingAccounts(transfers, mints))
+      .remainingAccounts(buildRemainingAccounts(transfers, mints, [177]))
       .instruction();
   };
 
@@ -210,6 +257,7 @@ describe("bridge-transaction ed25519 flow", () => {
       const initValidators = generateValidators(5).map((v) => v.publicKey);
       const treasury = web3.Keypair.generate();
       const relayer = web3.Keypair.generate();
+      await airdrop(provider.connection, treasury.publicKey, web3.LAMPORTS_PER_SOL);
       await fixture.initialize.call(initValidators, 0, {
         minOperationalFee: 1_000,
         bridgeFee: 500,
@@ -262,14 +310,11 @@ describe("bridge-transaction ed25519 flow", () => {
 
   it("fails when ed25519 signature is invalid", async () => {
     const batchId = new BN(await fixture.nextBatchId());
-    const msg = makeBatchMessage(batchId);
+    const transfers: TransferItem[] = [{ recipient, mintIndex: 0, amount: new BN(1000) }];
+    const msg = makeSignedPayload(batchId, transfers, [177]);
     const signers = validatorSigners.slice(0, threshold);
     const edIx = buildEd25519BatchIxWithOneInvalid(signers, msg, 0);
-    const bridgeIx = await buildBridgeIx(
-      [{ recipient, mintIndex: 0, amount: new BN(1000) }],
-      [mint],
-      batchId
-    );
+    const bridgeIx = await buildBridgeIx(transfers, [mint], batchId);
 
     let threw = false;
     try {
@@ -282,14 +327,11 @@ describe("bridge-transaction ed25519 flow", () => {
 
   it("fails when batch contains one valid and one invalid signature", async () => {
     const batchId = new BN(await fixture.nextBatchId());
-    const msg = makeBatchMessage(batchId);
+    const transfers: TransferItem[] = [{ recipient, mintIndex: 0, amount: new BN(1000) }];
+    const msg = makeSignedPayload(batchId, transfers, [177]);
     const two = validatorSigners.slice(0, 2);
     const edIx = buildEd25519BatchIxWithOneInvalid(two, msg, 1);
-    const bridgeIx = await buildBridgeIx(
-      [{ recipient, mintIndex: 0, amount: new BN(1000) }],
-      [mint],
-      batchId
-    );
+    const bridgeIx = await buildBridgeIx(transfers, [mint], batchId);
 
     let threw = false;
     try {
@@ -302,14 +344,11 @@ describe("bridge-transaction ed25519 flow", () => {
 
   it("fails when one signer is not in validator set", async () => {
     const batchId = new BN(await fixture.nextBatchId());
-    const msg = makeBatchMessage(batchId);
+    const transfers: TransferItem[] = [{ recipient, mintIndex: 0, amount: new BN(1000) }];
+    const msg = makeSignedPayload(batchId, transfers, [177]);
     const signers = [...validatorSigners.slice(0, threshold - 1), outsideSigner];
     const edIx = buildEd25519BatchIx(signers, msg);
-    const bridgeIx = await buildBridgeIx(
-      [{ recipient, mintIndex: 0, amount: new BN(1000) }],
-      [mint],
-      batchId
-    );
+    const bridgeIx = await buildBridgeIx(transfers, [mint], batchId);
 
     let threw = false;
     try {
@@ -323,14 +362,11 @@ describe("bridge-transaction ed25519 flow", () => {
 
   it("fails when signatures are below threshold", async () => {
     const batchId = new BN(await fixture.nextBatchId());
-    const msg = makeBatchMessage(batchId);
+    const transfers: TransferItem[] = [{ recipient, mintIndex: 0, amount: new BN(1000) }];
+    const msg = makeSignedPayload(batchId, transfers, [177]);
     const signers = validatorSigners.slice(0, Math.max(1, threshold - 1));
     const edIx = buildEd25519BatchIx(signers, msg);
-    const bridgeIx = await buildBridgeIx(
-      [{ recipient, mintIndex: 0, amount: new BN(1000) }],
-      [mint],
-      batchId
-    );
+    const bridgeIx = await buildBridgeIx(transfers, [mint], batchId);
 
     let threw = false;
     try {
@@ -349,17 +385,14 @@ describe("bridge-transaction ed25519 flow", () => {
   it("passes with threshold valid signatures", async () => {
     const batchId = new BN(await fixture.nextBatchId());
     const amount = new BN(7777);
-    const msg = makeBatchMessage(batchId);
+    const transfers: TransferItem[] = [{ recipient, mintIndex: 0, amount }];
+    const msg = makeSignedPayload(batchId, transfers, [177]);
     const signers = validatorSigners.slice(0, threshold);
     const edIx = buildEd25519BatchIx(signers, msg);
     const recipientAta = getAssociatedTokenAddressSync(mint, recipient);
     const before = await fixture.tokenBalances.getBalance(recipientAta);
 
-    const bridgeIx = await buildBridgeIx(
-      [{ recipient, mintIndex: 0, amount }],
-      [mint],
-      batchId
-    );
+    const bridgeIx = await buildBridgeIx(transfers, [mint], batchId);
     await sendTx([bridgeIx, edIx]);
 
     const after = await fixture.tokenBalances.getBalance(recipientAta);

@@ -61,17 +61,19 @@ pub struct BridgeRequest<'info> {
     #[account(mut)]
     pub mint: Account<'info, Mint>,
 
-    /// The TokenRegistry PDA for this mint.
+    /// The TokenRegistry PDA for this token id.
     ///
     /// Determines the bridge mechanic for this token:
     ///   - is_lock_unlock = true  → transfer tokens into vault (lock)
     ///   - is_lock_unlock = false → burn tokens from user's account
     ///
     /// Only tokens registered via register_lock_unlock_token or register_mint_burn_token
-    /// are permitted to be bridged. Unregistered mints will fail this account constraint.
+    /// are permitted to be bridged. The account address is derived from the
+    /// stored token_id, and the stored mint must match `mint`.
     #[account(
-        seeds = [TOKEN_REGISTRY_SEED, mint.key().as_ref()],
+        seeds = [TOKEN_REGISTRY_SEED, token_registry.token_id.to_le_bytes().as_ref()],
         bump = token_registry.bump,
+        constraint = token_registry.mint == mint.key() @ CustomError::TokenNotRegistered,
     )]
     pub token_registry: Account<'info, TokenRegistry>,
 
@@ -98,14 +100,6 @@ pub struct BridgeRequest<'info> {
         constraint = treasury.key() == fee_config.treasury @ CustomError::InvalidTreasury
     )]
     pub treasury: UncheckedAccount<'info>,
-
-    /// Relayer — receives bridge_fee immediately
-    /// CHECK: Validated against fee_config.relayer
-    #[account(
-        mut,
-        constraint = relayer.key() == fee_config.relayer @ CustomError::InvalidRelayer
-    )]
-    pub relayer: UncheckedAccount<'info>,
 }
 
 impl<'info> BridgeRequest<'info> {
@@ -170,19 +164,24 @@ impl<'info> BridgeRequest<'info> {
 
         require!(fee >= required_fee, CustomError::InsufficientFee);
         // Split:
-        // bridge_fee → relayer  (compensates destination gas)
+        // bridge_fee → vault PDA (held in escrow; paid out to relayer in bridge_transaction)
         // op_fee     → treasury (min_op_fee + any user surplus tip)
         let bridge_fee = fee_config.bridge_fee;
         // safe to subtract here because we validated above that fee >= required_fee, which includes bridge_fee
         let op_fee = fee - bridge_fee;
 
-        // bridge_fee → relayer (SOL)
+        // bridge_fee → vault PDA (SOL escrow)
+        //
+        // Vault is a program-owned PDA, but `from` is the system-owned signer,
+        // so the system_program::transfer CPI is valid here. The lamports
+        // accumulate on the vault PDA and are later disbursed to the relayer
+        // during bridge_transaction.
         transfer(
             CpiContext::new(
                 ctx.accounts.system_program.to_account_info(),
                 Transfer {
                     from: signer.to_account_info(),
-                    to: ctx.accounts.relayer.to_account_info(),
+                    to: vault.to_account_info(),
                 },
             ),
             bridge_fee,

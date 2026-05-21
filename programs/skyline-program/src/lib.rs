@@ -174,13 +174,10 @@ pub mod skyline_program {
     /// * `NoSignersProvided` - If no validator signers are provided
     /// * `NotEnoughSigners` - If insufficient validators have signed (checked when threshold is met)
     /// * `InvalidSigner` - If a signer is not in the validator set
-pub fn bridge_transaction<'info>(
+    pub fn bridge_transaction<'info>(
         ctx: Context<'_, '_, 'info, 'info, BridgeTransaction<'info>>,
-        transfers: Vec<TransferItem>,
-        mints: Vec<Pubkey>,
-        batch_id: u64,
     ) -> Result<()> {
-        BridgeTransaction::process_instruction(ctx, transfers, mints, batch_id)
+        BridgeTransaction::process_instruction(ctx)
     }
     /// Update the fee configuration for the bridge.
     ///
@@ -194,25 +191,16 @@ pub fn bridge_transaction<'info>(
     /// * `min_operational_fee` - Optional new minimum operational fee (lamports)
     /// * `bridge_fee` - Optional new bridge fee (lamports)     
     /// * `update_treasury` - Optional flag indicating whether to update the treasury address
-    /// * `update_relayer` - Optional flag indicating whether to update the relayer address
     ///
     /// # Errors
-    /// * `InvalidRelayer` - If the new relayer address is invalid
     /// * `InvalidTreasury` - If the new treasury address is invalid
     pub fn update_fee_config(
         ctx: Context<UpdateFeeConfig>,
         min_operational_fee: Option<u64>,
         bridge_fee: Option<u64>,
         update_treasury: Option<bool>,
-        update_relayer: Option<bool>,
     ) -> Result<()> {
-        UpdateFeeConfig::process_instruction(
-            ctx,
-            min_operational_fee,
-            bridge_fee,
-            update_treasury,
-            update_relayer,
-        )
+        UpdateFeeConfig::process_instruction(ctx, min_operational_fee, bridge_fee, update_treasury)
     }
 
     /// Updates `ProgramConfig.version_string` to match a new deployment.
@@ -279,24 +267,29 @@ pub fn bridge_transaction<'info>(
         )
     }
 
-    /// Lock additional lock/unlock tokens into the bridge vault (hot wallet).
+    /// Top up the bridge vault hot wallet with either wSOL or native SOL.
     ///
-    /// Top-ups vault liquidity using canonical wrapped SOL (wSOL) only.
-    /// The mint must be exactly `So11111111111111111111111111111111111111112`.
+    /// Eligible mints:
+    ///   - `WSOL_MINT` (`So11111111111111111111111111111111111111112`):
+    ///     `transfer_checked` signer ATA → vault ATA.
+    ///   - `NATIVE_SOL_MINT` (System Program ID sentinel):
+    ///     `system_program::transfer` signer → vault PDA (lamports).
+    ///
+    /// `signers_ata` and `vault_ata` are unused on the native-SOL branch and
+    /// can be filled with any placeholder (typically the System Program).
     ///
     /// # Arguments
     /// * `ctx`    - Instruction context
-    /// * `amount` - Raw token amount to lock (must be > 0)
+    /// * `amount` - Raw amount to deposit (must be > 0). For wSOL: token base
+    ///              units. For native SOL: lamports.
     ///
     /// # Errors
-    /// * `InvalidAmount`     - `amount` is zero
-    /// * `InsufficientFunds` - Signer's ATA balance is below `amount`
-    /// * `InvalidVault`      - Provided vault ATA doesn't match the canonical ATA
-    /// * `InvalidMintToken` - Mint is not canonical wSOL
-    pub fn hot_wallet_increment(
-        ctx: Context<HotWalletIncrement>,
-        amount: u64,
-    ) -> Result<()> {
+    /// * `InvalidAmount`       - `amount` is zero
+    /// * `InvalidMintToken`    - Mint is neither wSOL nor the native-SOL sentinel
+    /// * `InsufficientFunds`   - Signer lacks the requested wSOL / lamports
+    /// * `InvalidTokenAccount` - wSOL branch: signer's ATA failed validation
+    /// * `InvalidVault`        - wSOL branch: vault ATA address mismatch
+    pub fn hot_wallet_increment(ctx: Context<HotWalletIncrement>, amount: u64) -> Result<()> {
         HotWalletIncrement::process_instruction(ctx, amount)
     }
 }

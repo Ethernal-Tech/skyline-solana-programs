@@ -87,7 +87,7 @@ pub struct FeeConfig {
     pub treasury: Pubkey,
 
     /// Relayer account — receives bridge_fee directly per bridge request
-    pub relayer: Pubkey,
+    // pub relayer: Pubkey,
 
     /// Who is allowed to update this config (bridge authority)
     pub authority: Pubkey,
@@ -100,8 +100,8 @@ pub struct FeeConfig {
 // TokenRegistry
 // ─────────────────────────────────────────────────────────────────────────────
 //
-// One PDA per registered SPL mint.
-// Seeds: [TOKEN_REGISTRY_SEED, mint.key()]
+// One PDA per registered token_id.
+// Seeds: [TOKEN_REGISTRY_SEED, token_id.to_le_bytes()]
 //
 // Gateway parity:
 //   token_id        ↔ uint16 _tokenId in Gateway.registerToken()
@@ -150,7 +150,7 @@ pub struct TokenRegistry {
 // One PDA per registered token_id.
 // Seeds: [TOKEN_ID_GUARD_SEED, token_id.to_le_bytes()]
 //
-// Purpose: enforce on-chain uniqueness of token_id values.
+// Purpose: retained as a token-id-derived compatibility sentinel.
 //
 // Solana has no on-chain "does any account have field X = value?" query.
 // The only way to enforce uniqueness of an arbitrary value is to embed

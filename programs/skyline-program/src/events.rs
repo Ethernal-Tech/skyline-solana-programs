@@ -17,6 +17,11 @@ pub struct TransactionExecutedEvent {
 
     /// The number of transfers in the executed transaction
     pub transfer_count: u8,
+
+    /// Lamports paid from the vault PDA to the relayer (`payer`) as
+    /// compensation for submitting this batch. `0` when the relayer chose
+    /// not to take a fee (e.g. subsidized batches).
+    pub fee: u64,
 }
 
 /// Event emitted when the validator set is successfully updated.
@@ -74,9 +79,6 @@ pub struct FeeConfigUpdatedEvent {
 
     /// Treasury address
     pub treasury: Pubkey,
-
-    /// Relayer address
-    pub relayer: Pubkey,
 }
 
 /// Emitted when a LockUnlock token is registered.

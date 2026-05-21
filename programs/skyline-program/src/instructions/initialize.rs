@@ -61,10 +61,6 @@ pub struct Initialize<'info> {
     /// CHECK: Stored as a Pubkey reference, no ownership constraint required
     pub treasury: UncheckedAccount<'info>,
 
-    /// Relayer account — receives bridge fees directly
-    /// CHECK: Stored as Pubkey reference in FeeConfig
-    pub relayer: UncheckedAccount<'info>,
-
     /// The system program for account creation
     pub system_program: Program<'info, System>,
 }
@@ -113,10 +109,6 @@ impl<'info> Initialize<'info> {
             ctx.accounts.treasury.key() != Pubkey::default(),
             CustomError::InvalidTreasury
         );
-        require!(
-            ctx.accounts.relayer.key() != Pubkey::default(),
-            CustomError::InvalidRelayer
-        );
 
         // Validate once here so bridge_request can safely add the two fees together without overflow checks every time
         // If these two values overflow u64 together, reject immediately at init.
@@ -129,13 +121,9 @@ impl<'info> Initialize<'info> {
         fee_config.treasury = ctx.accounts.treasury.key();
         fee_config.authority = ctx.accounts.signer.key();
         fee_config.bump = ctx.bumps.fee_config;
-        fee_config.relayer = ctx.accounts.relayer.key();
 
         let version_str = env!("CARGO_PKG_VERSION");
-        require!(
-            version_str.len() <= 32,
-            CustomError::VersionStringTooLong
-        );
+        require!(version_str.len() <= 32, CustomError::VersionStringTooLong);
         program_config.version_string = version_str.to_string();
         program_config.deployed_at = Clock::get()?.unix_timestamp;
         program_config.authority = ctx.accounts.signer.key();

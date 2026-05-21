@@ -271,21 +271,16 @@ bridge_request(amount: u64, receiver: String, destination_chain: String, fees: u
 ### 3) `bridge_transaction`
 
 ```
-bridge_transaction(transfers: Vec<TransferItem>, mints: Vec<Pubkey>, batch_id: u64)
+bridge_transaction()
 ```
 
 **Purpose:** Inbound batch settlement. Mints or releases tokens to up to 5 recipients in one transaction after validator quorum is met.
 
 **Caller:** Relayer (pays rent for any new recipient ATAs).
 
-**Consensus source:** Validator approvals are read from a neighboring `ed25519` verification instruction using the instructions sysvar account. Validator signer accounts are **not** part of `remaining_accounts` for this instruction.
+**Consensus source:** Validator approvals and the full batch intent (`receivers`, `fee_amount`, `batch_id`, `blockhash`) are read from a neighboring `ed25519` verification instruction (`sendtx.SolanaPayload` in the signed message). Validator signer accounts are **not** part of `remaining_accounts`.
 
-**`TransferItem` fields:**
-| Field | Type | Description |
-|-------|------|-------------|
-| `recipient` | `Pubkey` | Destination wallet (not ATA — the raw owner) |
-| `mint_index` | `u8` | Zero-based index into the `mints` argument |
-| `amount` | `u64` | Token amount in base units |
+On-chain, receivers are turned into `TransferItem` entries and a deduplicated mint list (same mint-index rules as the Go relayer). **`remaining_accounts` must still match that derived layout** — mints, wallets, registries, ATAs, vault ATAs in the documented order.
 
 **`remaining_accounts` layout (strict positional):**
 

@@ -122,14 +122,15 @@
         {
           "name": "token_registry",
           "docs": [
-            "The TokenRegistry PDA for this mint.",
+            "The TokenRegistry PDA for this token id.",
             "",
             "Determines the bridge mechanic for this token:",
             "- is_lock_unlock = true  → transfer tokens into vault (lock)",
             "- is_lock_unlock = false → burn tokens from user's account",
             "",
             "Only tokens registered via register_lock_unlock_token or register_mint_burn_token",
-            "are permitted to be bridged. Unregistered mints will fail this account constraint."
+            "are permitted to be bridged. The account address is derived from the",
+            "stored token_id, and the stored mint must match `mint`."
           ],
           "pda": {
             "seeds": [
@@ -154,7 +155,8 @@
               },
               {
                 "kind": "account",
-                "path": "mint"
+                "path": "token_registry.token_id",
+                "account": "TokenRegistry"
               }
             ]
           }
@@ -209,13 +211,6 @@
           "name": "treasury",
           "docs": [
             "Treasury — receives operational fee immediately"
-          ],
-          "writable": true
-        },
-        {
-          "name": "relayer",
-          "docs": [
-            "Relayer — receives bridge_fee immediately"
           ],
           "writable": true
         }
@@ -275,7 +270,9 @@
         {
           "name": "payer",
           "docs": [
-            "Pays rent for any recipient ATAs that need to be created (~0.002 SOL each)."
+            "Pays rent for any recipient ATAs that need to be created (~0.002 SOL each)",
+            "and receives the `fee` lamport payout from the vault (relayer compensation,",
+            "analogous to EVM's `msg.sender`)."
           ],
           "writable": true,
           "signer": true
@@ -284,7 +281,7 @@
           "name": "validator_set",
           "docs": [
             "Validator set — holds threshold, registered signers, and last_batch_id.",
-            "The `batch_id` constraint is the first line of replay protection."
+            "`last_batch_id` is compared against the signed payload in the handler."
           ],
           "writable": true,
           "pda": {
@@ -360,28 +357,7 @@
           "address": "Sysvar1nstructions1111111111111111111111111"
         }
       ],
-      "args": [
-        {
-          "name": "transfers",
-          "type": {
-            "vec": {
-              "defined": {
-                "name": "TransferItem"
-              }
-            }
-          }
-        },
-        {
-          "name": "mints",
-          "type": {
-            "vec": "pubkey"
-          }
-        },
-        {
-          "name": "batch_id",
-          "type": "u64"
-        }
-      ]
+      "args": []
     },
     {
       "name": "bridge_vsu",
@@ -487,20 +463,28 @@
     {
       "name": "hot_wallet_increment",
       "docs": [
-        "Lock additional lock/unlock tokens into the bridge vault (hot wallet).",
+        "Top up the bridge vault hot wallet with either wSOL or native SOL.",
         "",
-        "Top-ups vault liquidity using canonical wrapped SOL (wSOL) only.",
-        "The mint must be exactly `So11111111111111111111111111111111111111112`.",
+        "Eligible mints:",
+        "- `WSOL_MINT` (`So11111111111111111111111111111111111111112`):",
+        "`transfer_checked` signer ATA → vault ATA.",
+        "- `NATIVE_SOL_MINT` (System Program ID sentinel):",
+        "`system_program::transfer` signer → vault PDA (lamports).",
+        "",
+        "`signers_ata` and `vault_ata` are unused on the native-SOL branch and",
+        "can be filled with any placeholder (typically the System Program).",
         "",
         "# Arguments",
         "* `ctx`    - Instruction context",
-        "* `amount` - Raw token amount to lock (must be > 0)",
+        "* `amount` - Raw amount to deposit (must be > 0). For wSOL: token base",
+        "units. For native SOL: lamports.",
         "",
         "# Errors",
-        "* `InvalidAmount`     - `amount` is zero",
-        "* `InsufficientFunds` - Signer's ATA balance is below `amount`",
-        "* `InvalidVault`      - Provided vault ATA doesn't match the canonical ATA",
-        "* `InvalidMintToken` - Mint is not canonical wSOL"
+        "* `InvalidAmount`       - `amount` is zero",
+        "* `InvalidMintToken`    - Mint is neither wSOL nor the native-SOL sentinel",
+        "* `InsufficientFunds`   - Signer lacks the requested wSOL / lamports",
+        "* `InvalidTokenAccount` - wSOL branch: signer's ATA failed validation",
+        "* `InvalidVault`        - wSOL branch: vault ATA address mismatch"
       ],
       "discriminator": [
         60,
@@ -516,8 +500,8 @@
         {
           "name": "signer",
           "docs": [
-            "The user depositing tokens into the bridge hot wallet.",
-            "Pays rent if the vault ATA needs to be created."
+            "The user depositing liquidity into the bridge hot wallet.",
+            "Pays rent if the vault ATA needs to be created (wSOL branch)."
           ],
           "writable": true,
           "signer": true
@@ -525,15 +509,18 @@
         {
           "name": "signers_ata",
           "docs": [
-            "The signer's source token account. Tokens are debited from here."
+            "and validated at runtime. Native-SOL branch — unused; pass any account",
+            "(e.g. the System Program) as a placeholder."
           ],
           "writable": true
         },
         {
           "name": "vault",
           "docs": [
-            "Bridge vault PDA — owns `vault_ata`."
+            "Bridge vault PDA. `mut` because the native-SOL branch credits its",
+            "lamport balance directly via `system_program::transfer`."
           ],
+          "writable": true,
           "pda": {
             "seeds": [
               {
@@ -552,19 +539,17 @@
         {
           "name": "vault_ata",
           "docs": [
-            "The vault's associated token account for the deposited mint.",
-            "Created on-demand inside `process_instruction` if missing —",
-            "`init_if_needed` is avoided to keep the program free of that feature."
+            "validated at runtime. Native-SOL branch — unused; placeholder allowed."
           ],
           "writable": true
         },
         {
           "name": "mint",
           "docs": [
-            "The mint of the tokens being deposited.",
-            "Must be canonical wrapped SOL mint."
-          ],
-          "address": "So11111111111111111111111111111111111111112"
+            "(native-SOL branch); enforced at runtime. For the native-SOL branch",
+            "this is the System Program account (since `NATIVE_SOL_MINT == System",
+            "Program ID`), matching the convention used by `bridge_transaction`."
+          ]
         },
         {
           "name": "token_program",
@@ -576,7 +561,8 @@
         {
           "name": "system_program",
           "docs": [
-            "System program — required for ATA creation CPI."
+            "System program — required for ATA creation CPI (wSOL branch) and the",
+            "native-SOL lamport transfer."
           ],
           "address": "11111111111111111111111111111111"
         },
@@ -748,12 +734,6 @@
           ]
         },
         {
-          "name": "relayer",
-          "docs": [
-            "Relayer account — receives bridge fees directly"
-          ]
-        },
-        {
           "name": "system_program",
           "docs": [
             "The system program for account creation"
@@ -842,15 +822,15 @@
         {
           "name": "token_registry",
           "docs": [
-            "TokenRegistry PDA — one per mint.",
+            "TokenRegistry PDA — one per token_id.",
             "",
-            "This is the Solana-idiomatic \"map entry\": given any mint pubkey, the",
-            "registry for that mint is always at a deterministic address:",
-            "PDA([TOKEN_REGISTRY_SEED, mint])",
+            "This is the Solana-idiomatic \"map entry\": given any token_id, the",
+            "registry for that token is always at a deterministic address:",
+            "PDA([TOKEN_REGISTRY_SEED, token_id.to_le_bytes()])",
             "",
             "Anchor's `init` rejects creation if the account already exists,",
-            "making double-registration of the same mint impossible.",
-            "PDA: [TOKEN_REGISTRY_SEED, mint.key()]"
+            "making double-registration of the same token_id impossible.",
+            "PDA: [TOKEN_REGISTRY_SEED, token_id.to_le_bytes()]"
           ],
           "writable": true,
           "pda": {
@@ -875,8 +855,8 @@
                 ]
               },
               {
-                "kind": "account",
-                "path": "mint"
+                "kind": "arg",
+                "path": "token_id"
               }
             ]
           }
@@ -886,8 +866,7 @@
           "docs": [
             "TokenIdGuard PDA — one per token_id.",
             "",
-            "Acts as a uniqueness sentinel: if two mints tried to share the same",
-            "token_id, the second `init` would fail, protecting destination-chain routing.",
+            "Compatibility sentinel derived by token_id.",
             "PDA: [TOKEN_ID_GUARD_SEED, token_id.to_le_bytes()]"
           ],
           "writable": true,
@@ -1057,9 +1036,9 @@
         {
           "name": "token_registry",
           "docs": [
-            "One PDA per mint — enforces mint uniqueness across the registry.",
-            "Anchor init fails with AlreadyInUse if this mint was already registered.",
-            "PDA: [TOKEN_REGISTRY_SEED, mint.key()]"
+            "One PDA per token_id — enforces token_id uniqueness across the registry.",
+            "Anchor init fails with AlreadyInUse if this token_id was already registered.",
+            "PDA: [TOKEN_REGISTRY_SEED, token_id.to_le_bytes()]"
           ],
           "writable": true,
           "pda": {
@@ -1084,8 +1063,8 @@
                 ]
               },
               {
-                "kind": "account",
-                "path": "mint"
+                "kind": "arg",
+                "path": "token_id"
               }
             ]
           }
@@ -1093,7 +1072,7 @@
         {
           "name": "token_id_guard",
           "docs": [
-            "One PDA per token_id — enforces token_id uniqueness across the registry.",
+            "One PDA per token_id — retained for compatibility with existing clients.",
             "Anchor init fails with AlreadyInUse if this token_id is already taken.",
             "PDA: [TOKEN_ID_GUARD_SEED, token_id.to_le_bytes()]"
           ],
@@ -1185,10 +1164,8 @@
         "* `min_operational_fee` - Optional new minimum operational fee (lamports)",
         "* `bridge_fee` - Optional new bridge fee (lamports)",
         "* `update_treasury` - Optional flag indicating whether to update the treasury address",
-        "* `update_relayer` - Optional flag indicating whether to update the relayer address",
         "",
         "# Errors",
-        "* `InvalidRelayer` - If the new relayer address is invalid",
         "* `InvalidTreasury` - If the new treasury address is invalid"
       ],
       "discriminator": [
@@ -1237,12 +1214,6 @@
           "docs": [
             "New treasury account — only needed when updating treasury."
           ]
-        },
-        {
-          "name": "new_relayer",
-          "docs": [
-            "New relayer account — only needed when updating relayer."
-          ]
         }
       ],
       "args": [
@@ -1260,12 +1231,6 @@
         },
         {
           "name": "update_treasury",
-          "type": {
-            "option": "bool"
-          }
-        },
-        {
-          "name": "update_relayer",
           "type": {
             "option": "bool"
           }
@@ -1645,78 +1610,78 @@
     },
     {
       "code": 6023,
-      "name": "InvalidRelayer",
-      "msg": "Relayer account does not match fee config"
-    },
-    {
-      "code": 6024,
       "name": "FeeConfigOverflow",
       "msg": "Fee values overflow when combined — reduce min_operational_fee or bridge_fee"
     },
     {
-      "code": 6025,
+      "code": 6024,
       "name": "BridgingAmountTooLow",
       "msg": "Bridging amount is below the minimum threshold"
     },
     {
-      "code": 6026,
+      "code": 6025,
       "name": "TokenIdAlreadyRegistered",
       "msg": "Token ID is already registered to another mint"
     },
     {
-      "code": 6027,
-      "name": "MintAlreadyRegistered",
-      "msg": "This mint is already registered in the token registry"
-    },
-    {
-      "code": 6028,
+      "code": 6026,
       "name": "TokenNotRegistered",
       "msg": "Mint is not registered in the token registry"
     },
     {
-      "code": 6029,
+      "code": 6027,
       "name": "NotLockUnlock",
       "msg": "Token is not a Lock/Unlock token"
     },
     {
-      "code": 6030,
+      "code": 6028,
       "name": "NotMintBurn",
       "msg": "Token is not a Mint/Burn token"
     },
     {
-      "code": 6031,
+      "code": 6029,
       "name": "InsufficientSigners",
       "msg": "Not enough validators signed this transaction"
     },
     {
-      "code": 6032,
+      "code": 6030,
       "name": "InvalidMintList",
       "msg": "Mint list is empty or inconsistent with transfers."
     },
     {
-      "code": 6033,
+      "code": 6031,
       "name": "InvalidMintIndex",
       "msg": "mint_index is out of bounds for the provided mints list."
     },
     {
-      "code": 6034,
+      "code": 6032,
       "name": "InvalidRemainingAccounts",
       "msg": "remaining_accounts layout is inconsistent with instruction arguments."
     },
     {
-      "code": 6035,
+      "code": 6033,
       "name": "AccountNotFound",
       "msg": "A required account was not found in the transaction account list."
     },
     {
-      "code": 6036,
+      "code": 6034,
       "name": "InvalidTransferCount",
       "msg": "Transfer count must be greater or equal than 1."
     },
     {
-      "code": 6037,
+      "code": 6035,
       "name": "VersionStringTooLong",
       "msg": "Program version string from build exceeds max storage length"
+    },
+    {
+      "code": 6036,
+      "name": "InsufficientVaultLamports",
+      "msg": "Vault has insufficient lamports to fulfil the native SOL transfer"
+    },
+    {
+      "code": 6037,
+      "name": "InvalidSignedPayload",
+      "msg": "Validator-signed payload is invalid or inconsistent with the instruction"
     }
   ],
   "types": [
@@ -1816,15 +1781,9 @@
             "type": "pubkey"
           },
           {
-            "name": "relayer",
-            "docs": [
-              "Relayer account — receives bridge_fee directly per bridge request"
-            ],
-            "type": "pubkey"
-          },
-          {
             "name": "authority",
             "docs": [
+              "Relayer account — receives bridge_fee directly per bridge request",
               "Who is allowed to update this config (bridge authority)"
             ],
             "type": "pubkey"
@@ -1865,13 +1824,6 @@
             "name": "treasury",
             "docs": [
               "Treasury address"
-            ],
-            "type": "pubkey"
-          },
-          {
-            "name": "relayer",
-            "docs": [
-              "Relayer address"
             ],
             "type": "pubkey"
           }
@@ -2151,39 +2103,13 @@
               "The number of transfers in the executed transaction"
             ],
             "type": "u8"
-          }
-        ]
-      }
-    },
-    {
-      "name": "TransferItem",
-      "docs": [
-        "Describes a single transfer within a batched bridge transaction.",
-        "",
-        "`mint_index` references into the deduplicated `mints` instruction argument,",
-        "which is also parallel to the mint accounts section in `remaining_accounts`."
-      ],
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "recipient",
-            "docs": [
-              "The destination wallet pubkey (not the ATA — the raw owner wallet)."
-            ],
-            "type": "pubkey"
           },
           {
-            "name": "mint_index",
+            "name": "fee",
             "docs": [
-              "Zero-based index into the `mints: Vec<Pubkey>` instruction argument."
-            ],
-            "type": "u8"
-          },
-          {
-            "name": "amount",
-            "docs": [
-              "Amount of tokens to transfer, in the mint's native base unit."
+              "Lamports paid from the vault PDA to the relayer (`payer`) as",
+              "compensation for submitting this batch. `0` when the relayer chose",
+              "not to take a fee (e.g. subsidized batches)."
             ],
             "type": "u64"
           }
@@ -2384,6 +2310,20 @@
       ],
       "type": "u32",
       "value": "4"
+    },
+    {
+      "name": "NATIVE_SOL_MINT",
+      "docs": [
+        "Sentinel value used in `bridge_transaction.mints` to signal a native SOL",
+        "transfer (lamports paid directly from the vault PDA to the recipient",
+        "wallet) rather than an SPL token mint/burn or lock/unlock.",
+        "",
+        "Equal to `Pubkey::default()` and to the System Program ID. Cannot collide",
+        "with any valid SPL mint, and follows the same convention used by",
+        "Wormhole / Jupiter / other Solana bridges for \"native SOL\"."
+      ],
+      "type": "pubkey",
+      "value": "11111111111111111111111111111111"
     },
     {
       "name": "PROGRAM_CONFIG_SEED",
