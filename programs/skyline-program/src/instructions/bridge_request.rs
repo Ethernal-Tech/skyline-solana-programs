@@ -251,7 +251,8 @@ impl<'info> BridgeRequest<'info> {
             destination_chain,
             mint_token: mint.key(),
             bridge_fee,
-            operational_fee: op_fee,
+            operation_fee: op_fee,
+            value: bridge_fee,
         });
 
         // Increment the bridge request count

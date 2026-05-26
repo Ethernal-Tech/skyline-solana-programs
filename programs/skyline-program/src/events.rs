@@ -57,8 +57,10 @@ pub struct BridgeRequestEvent {
     pub mint_token: Pubkey,
     /// The fee amount for the relayer to process this bridge request
     pub bridge_fee: u64,
-    /// The operational fee for the bridge to maintain its operations
-    pub operational_fee: u64,
+    /// The operation fee for the bridge to maintain its operations
+    pub operation_fee: u64,
+    /// Transaction value (bridge_fee + amount if currency is bridged)
+    pub value: u64,
 }
 
 /// Emitted when the authority updates `ProgramConfig.version_string` after deploy.

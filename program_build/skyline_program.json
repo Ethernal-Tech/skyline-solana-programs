@@ -1740,9 +1740,16 @@
             "type": "u64"
           },
           {
-            "name": "operational_fee",
+            "name": "operation_fee",
             "docs": [
-              "The operational fee for the bridge to maintain its operations"
+              "The operation fee for the bridge to maintain its operations"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "value",
+            "docs": [
+              "Transaction value (bridge_fee + amount if currency is bridged)"
             ],
             "type": "u64"
           }
