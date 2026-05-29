@@ -56,7 +56,7 @@ pub use events::*;
 pub mod helpers;
 pub use helpers::*;
 
-declare_id!("CkTNcuk9EELmuR65eCfzKfz8XpDvJ27FPFHauGHVD1E9");
+declare_id!("6R9GdZEpwBFTicsZCqN7e7P4gqoKDTdiDQSceJz5pGHY");
 
 /// Returns the `ProgramConfig` PDA address and bump (`seeds = [PROGRAM_CONFIG_SEED]`).
 pub fn get_config_pda() -> (Pubkey, u8) {
