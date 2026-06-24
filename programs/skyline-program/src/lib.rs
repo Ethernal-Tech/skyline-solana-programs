@@ -292,4 +292,23 @@ pub mod skyline_program {
     pub fn hot_wallet_increment(ctx: Context<HotWalletIncrement>, amount: u64) -> Result<()> {
         HotWalletIncrement::process_instruction(ctx, amount)
     }
+
+    /// Update the minimum bridging amount for a registered token.
+    ///
+    /// Only callable by the bridge authority. The token must already be registered
+    /// via `register_lock_unlock_token` or `register_mint_burn_token`.
+    ///
+    /// # Arguments
+    /// * `token_id`            - Gateway-compatible identifier of the registered token
+    /// * `min_bridging_amount` - New minimum raw token amount per `bridge_request`
+    ///
+    /// # Errors
+    /// * `CustomError::Unauthorized` - Signer is not the bridge authority
+    pub fn update_min_bridging_amount(
+        ctx: Context<UpdateMinBridgingAmount>,
+        token_id: u16,
+        min_bridging_amount: u64,
+    ) -> Result<()> {
+        UpdateMinBridgingAmount::process_instruction(ctx, token_id, min_bridging_amount)
+    }
 }

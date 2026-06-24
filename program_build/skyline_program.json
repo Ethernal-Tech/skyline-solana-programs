@@ -1238,6 +1238,107 @@
       ]
     },
     {
+      "name": "update_min_bridging_amount",
+      "docs": [
+        "Update the minimum bridging amount for a registered token.",
+        "",
+        "Only callable by the bridge authority. The token must already be registered",
+        "via `register_lock_unlock_token` or `register_mint_burn_token`.",
+        "",
+        "# Arguments",
+        "* `token_id`            - Gateway-compatible identifier of the registered token",
+        "* `min_bridging_amount` - New minimum raw token amount per `bridge_request`",
+        "",
+        "# Errors",
+        "* `CustomError::Unauthorized` - Signer is not the bridge authority"
+      ],
+      "discriminator": [
+        154,
+        223,
+        132,
+        123,
+        178,
+        94,
+        16,
+        41
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "docs": [
+            "The bridge admin. Must match `fee_config.authority`."
+          ],
+          "signer": true
+        },
+        {
+          "name": "fee_config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  102,
+                  101,
+                  101,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "token_registry",
+          "docs": [
+            "TokenRegistry PDA for the given `token_id`."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  111,
+                  107,
+                  101,
+                  110,
+                  95,
+                  114,
+                  101,
+                  103,
+                  105,
+                  115,
+                  116,
+                  114,
+                  121
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "token_id"
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "token_id",
+          "type": "u16"
+        },
+        {
+          "name": "min_bridging_amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
       "name": "update_program_version",
       "docs": [
         "Updates `ProgramConfig.version_string` to match a new deployment.",
@@ -1437,6 +1538,19 @@
         86,
         187,
         120
+      ]
+    },
+    {
+      "name": "MinBridgingAmountUpdatedEvent",
+      "discriminator": [
+        129,
+        249,
+        169,
+        118,
+        98,
+        59,
+        181,
+        131
       ]
     },
     {
@@ -1908,6 +2022,38 @@
             "docs": [
               "Minimum raw token amount allowed per bridge_request.",
               "Token-decimal-aware: e.g. for USDC this would be 1_000_000 (1 USDC with 6 decimals)."
+            ],
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "MinBridgingAmountUpdatedEvent",
+      "docs": [
+        "Emitted when the authority updates `TokenRegistry.min_bridging_amount`."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "token_id",
+            "docs": [
+              "Gateway-compatible uint16 identifier."
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "mint",
+            "docs": [
+              "The SPL mint for this registry entry."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "min_bridging_amount",
+            "docs": [
+              "Updated minimum raw token amount allowed per bridge_request."
             ],
             "type": "u64"
           }

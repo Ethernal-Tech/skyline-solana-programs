@@ -122,6 +122,19 @@ pub struct HotWalletIncrementEvent {
     pub amount: u64,
 }
 
+/// Emitted when the authority updates `TokenRegistry.min_bridging_amount`.
+#[event]
+pub struct MinBridgingAmountUpdatedEvent {
+    /// Gateway-compatible uint16 identifier.
+    pub token_id: u16,
+
+    /// The SPL mint for this registry entry.
+    pub mint: Pubkey,
+
+    /// Updated minimum raw token amount allowed per bridge_request.
+    pub min_bridging_amount: u64,
+}
+
 /// Emitted when a MintBurn token is registered.
 /// Gateway parity: TokenRegistered event in Gateway.sol
 ///
