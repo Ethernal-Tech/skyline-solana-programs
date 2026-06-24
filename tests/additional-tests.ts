@@ -152,14 +152,16 @@ describe("additional program coverage", () => {
   describe("update_min_bridging_amount", () => {
     const TOKEN_ID = 601;
 
-    it("authority updates min bridging amount for a registered token", async () => {
-      const mint = await fixture.mints.createMint(6);
+    before("register token for update tests", async () => {
+      const mint = await fixture.mints.create(owner.publicKey, 6);
       await fixture.tokenRegistry.registerLockUnlock({
         mint,
         tokenId: TOKEN_ID,
         minBridgingAmount: 100
       });
+    });
 
+    it("authority updates min bridging amount for a registered token", async () => {
       await fixture.tokenRegistry.updateMinBridgingAmount({
         tokenId: TOKEN_ID,
         minBridgingAmount: 500
