@@ -62,7 +62,7 @@ use anchor_spl::{
 use crate::*;
 
 /// Maximum number of recipients allowed in a single batched bridge transaction.
-pub const MAX_TRANSFERS: usize = 4;
+pub const MAX_TRANSFERS: usize = 3;
 
 /// Token id and amount pair inside a validator-signed [`SolanaPayload`].
 ///

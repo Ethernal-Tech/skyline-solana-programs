@@ -1,6 +1,7 @@
 /**
  * High-priority coverage for recent program changes:
  * - update_fee_config
+ * - update_min_bridging_amount
  * - mint/burn registration + bridge_request burn + bridge_transaction mint
  * - bridge_transaction native SOL (token_id 0) + vault fee payout
  * - bridge_request token_registry mint mismatch
@@ -140,6 +141,52 @@ describe("additional program coverage", () => {
 
       await fixture.updateFeeConfig.expectError(
         { authority: outsider, minOperationalFee: new BN(1) },
+        "Unauthorized"
+      );
+    });
+  });
+
+  // ═══════════════════════════════════════════════════════════════════
+  // update_min_bridging_amount
+  // ═══════════════════════════════════════════════════════════════════
+  describe("update_min_bridging_amount", () => {
+    const TOKEN_ID = 601;
+
+    before("register token for update tests", async () => {
+      const mint = await fixture.mints.create(owner.publicKey, 6);
+      await fixture.tokenRegistry.registerLockUnlock({
+        mint,
+        tokenId: TOKEN_ID,
+        minBridgingAmount: 100
+      });
+    });
+
+    it("authority updates min bridging amount for a registered token", async () => {
+      await fixture.tokenRegistry.updateMinBridgingAmount({
+        tokenId: TOKEN_ID,
+        minBridgingAmount: 500
+      });
+
+      const registry = await fixture.accounts.getTokenRegistry(
+        fixture.pdas.tokenRegistry(TOKEN_ID)
+      );
+      expect(registry.minBridgingAmount.toNumber()).to.equal(500);
+    });
+
+    it("fails when signer is not fee_config authority", async () => {
+      const outsider = web3.Keypair.generate();
+      await airdrop(
+        provider.connection,
+        outsider.publicKey,
+        web3.LAMPORTS_PER_SOL
+      );
+
+      await fixture.tokenRegistry.expectUpdateMinBridgingAmountError(
+        {
+          tokenId: TOKEN_ID,
+          minBridgingAmount: 1,
+          authority: outsider
+        },
         "Unauthorized"
       );
     });

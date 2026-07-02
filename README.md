@@ -80,7 +80,10 @@ docker run --rm \
 # Runs Anchor tests inside the same container image.
 # Creates an ephemeral local wallet keypair required by Anchor.
 # --skip-build reuses the already-built program from image build time.
+#
+# Mount ./tests so local test changes are picked up without rebuilding the image.
 docker run --rm \
+  -v "$(pwd)/tests:/app/tests" \
   --entrypoint sh \
   solana-program-builder \
   -lc "mkdir -p /root/.config/solana && solana-keygen new --no-bip39-passphrase -s -o /root/.config/solana/id.json && anchor test --skip-build"

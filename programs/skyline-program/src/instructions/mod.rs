@@ -40,4 +40,8 @@ pub use register_mint_burn_token::*;
 pub mod hot_wallet_increment;
 pub use hot_wallet_increment::*;
 
+/// Update min bridging amount for a registered token (authority only)
+pub mod update_min_bridging_amount;
+pub use update_min_bridging_amount::*;
+
 pub use bridge_transaction::TransferItem;

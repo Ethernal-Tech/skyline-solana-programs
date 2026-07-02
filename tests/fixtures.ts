@@ -693,6 +693,64 @@ export class TokenRegistryHelper {
     const accounts = await this.program.account.tokenRegistry.all();
     return accounts.some(({ account }) => account.mint.equals(mint));
   }
+
+  /**
+   * Update min_bridging_amount for a registered token (authority only).
+   */
+  async updateMinBridgingAmount(params: {
+    tokenId: number;
+    minBridgingAmount: number | BN;
+    authority?: web3.Keypair;
+  }): Promise<string> {
+    const minBridgingAmount =
+      typeof params.minBridgingAmount === "number"
+        ? new BN(params.minBridgingAmount)
+        : params.minBridgingAmount;
+    const authority = params.authority ?? this.owner.payer;
+    const feeConfigPDA = web3.PublicKey.findProgramAddressSync(
+      [Buffer.from(SEEDS.FEE_CONFIG)],
+      this.program.programId
+    )[0];
+    const idBuf = Buffer.alloc(2);
+    idBuf.writeUInt16LE(params.tokenId, 0);
+    const tokenRegistryPDA = web3.PublicKey.findProgramAddressSync(
+      [Buffer.from(SEEDS.TOKEN_REGISTRY), idBuf],
+      this.program.programId
+    )[0];
+
+    return await this.program.methods
+      .updateMinBridgingAmount(params.tokenId, minBridgingAmount)
+      .accountsPartial({
+        authority: authority.publicKey,
+        feeConfig: feeConfigPDA,
+        tokenRegistry: tokenRegistryPDA
+      })
+      .signers(authority === this.owner.payer ? [] : [authority])
+      .rpc();
+  }
+
+  async expectUpdateMinBridgingAmountError(
+    params: {
+      tokenId: number;
+      minBridgingAmount: number | BN;
+      authority?: web3.Keypair;
+    },
+    expectedErrorCode: string
+  ): Promise<void> {
+    let thrown = false;
+    try {
+      await this.updateMinBridgingAmount(params);
+    } catch (e: any) {
+      thrown = true;
+      const code = e.error?.errorCode?.code ?? e.errorCode?.code;
+      expect(code).to.equal(expectedErrorCode);
+    }
+    if (!thrown) {
+      throw new Error(
+        `Expected updateMinBridgingAmount to fail with ${expectedErrorCode}, but it succeeded`
+      );
+    }
+  }
 }
 
 // ============================================================================
