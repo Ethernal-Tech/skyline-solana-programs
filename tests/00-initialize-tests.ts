@@ -176,7 +176,7 @@ describe("skyline-program initialize", () => {
       assertValidBump(fc.bump);
 
       const pc = await fixture.getProgramConfig();
-      expect(pc.versionString).to.equal("0.1.0");
+      expect(pc.versionString).to.equal("0.2.0");
       expect(pc.authority.toBase58()).to.equal(owner.publicKey.toBase58());
       expect(pc.deployedAt.toNumber()).to.be.greaterThan(0);
     });
