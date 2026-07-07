@@ -221,6 +221,24 @@ pub mod skyline_program {
         UpdateProgramVersion::process_instruction(ctx, version_string)
     }
 
+    /// Register a pre-existing SPL mint as a LockUnlock bridgeable token.
+    ///
+    /// Whitelists an existing mint (e.g. WSOL, USDC) for bridging via lock/unlock:
+    /// on `bridge_request` tokens are transferred into the vault; on `bridge_transaction`
+    /// they are transferred back to the recipient.
+    ///
+    /// Creates `TokenRegistry` (is_lock_unlock = true) and `TokenIdGuard` PDAs.
+    ///
+    /// Only callable by the bridge authority.
+    ///
+    /// # Arguments
+    /// * `ctx`                 - Instruction context
+    /// * `token_id`            - Unique gateway-compatible uint16 identifier
+    /// * `min_bridging_amount` - Minimum raw token amount allowed per bridge_request
+    ///
+    /// # Errors
+    /// * `CustomError::Unauthorized` - Signer is not the bridge authority
+    /// * `AlreadyInUse`              - mint or token_id already registered (Anchor init)
     pub fn register_lock_unlock_token(
         ctx: Context<RegisterLockUnlockToken>,
         token_id: u16,
