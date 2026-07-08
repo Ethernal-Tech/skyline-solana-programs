@@ -2,6 +2,9 @@
 //!
 //! Single entry point for full bridge system initialization.
 //! Creates: ValidatorSet PDA, Vault PDA, FeeConfig PDA, ProgramConfig PDA.
+//!
+//! Access control: only the program's BPF upgrade authority may call `initialize`,
+//! preventing front-running of the post-deploy init window.
 
 use crate::*;
 
@@ -12,7 +15,8 @@ use crate::*;
 #[derive(Accounts)]
 #[instruction(validators: Vec<Pubkey>)]
 pub struct Initialize<'info> {
-    /// The signer who is initializing the bridge system
+    /// The signer who is initializing the bridge system.
+    /// Must be the program's upgrade authority (checked via `program_data`).
     #[account(mut)]
     pub signer: Signer<'info>,
 
@@ -60,6 +64,17 @@ pub struct Initialize<'info> {
     /// The treasury account that will receive operational fees
     /// CHECK: Stored as a Pubkey reference, no ownership constraint required
     pub treasury: UncheckedAccount<'info>,
+
+    /// This program's executable account — used to derive / verify `program_data`.
+    #[account(constraint = program.programdata_address()? == Some(program_data.key()))]
+    pub program: Program<'info, crate::program::SkylineProgram>,
+
+    /// Program data account holding the upgrade authority.
+    #[account(
+        constraint = program_data.upgrade_authority_address == Some(signer.key())
+            @ CustomError::Unauthorized
+    )]
+    pub program_data: Account<'info, ProgramData>,
 
     /// The system program for account creation
     pub system_program: Program<'info, System>,

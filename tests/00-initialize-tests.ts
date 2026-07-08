@@ -15,7 +15,8 @@ import {
   assertValidatorSetState,
   LIMITS,
   assertValidBump,
-  airdrop
+  airdrop,
+  programDataAddress
 } from "./fixtures";
 
 describe("skyline-program initialize", () => {
@@ -126,6 +127,47 @@ describe("skyline-program initialize", () => {
           treasury: treasury.publicKey,
           relayer: relayer.publicKey
         }
+      );
+    });
+
+    it("fails when signer is not the program upgrade authority", async () => {
+      const validatorPubkeys = validators.slice(0, 5).map((v) => v.publicKey);
+      const impostor = web3.Keypair.generate();
+      await airdrop(
+        provider.connection,
+        impostor.publicKey,
+        2 * web3.LAMPORTS_PER_SOL
+      );
+
+      let threw = false;
+      try {
+        await program.methods
+          .initialize(
+            validatorPubkeys,
+            new anchor.BN(0),
+            new anchor.BN(MIN_OPERATIONAL_FEE),
+            new anchor.BN(BRIDGE_FEE)
+          )
+          .accountsPartial({
+            signer: impostor.publicKey,
+            treasury: treasury.publicKey,
+            programData: programDataAddress(program.programId)
+          })
+          .signers([impostor])
+          .rpc();
+      } catch (e: any) {
+        threw = true;
+        const code = e?.error?.errorCode?.code ?? e?.errorCode?.code;
+        const logs: string = (e?.logs ?? []).join("\n");
+        expect(
+          code === "Unauthorized" ||
+            logs.includes("Unauthorized") ||
+            logs.includes("ConstraintRaw"),
+          `expected Unauthorized, got code=${code}, logs=${logs}`
+        ).to.equal(true);
+      }
+      expect(threw, "non-upgrade-authority initialize should fail").to.equal(
+        true
       );
     });
   });

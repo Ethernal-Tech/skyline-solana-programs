@@ -126,9 +126,8 @@ The Vault PDA is the signing authority for all token CPIs: `mint_to`, `transfer_
 | Field | Type | Description |
 |-------|------|-------------|
 | `min_operational_fee` | `u64` | Minimum lamports sent to treasury per `bridge_request` |
-| `bridge_fee` | `u64` | Lamports sent to relayer per `bridge_request` (destination gas estimate) |
+| `bridge_fee` | `u64` | Lamports escrowed to vault per `bridge_request` (destination gas estimate) |
 | `treasury` | `Pubkey` | Receives `fee - bridge_fee` on every `bridge_request` |
-| `relayer` | `Pubkey` | Receives `bridge_fee` on every `bridge_request` |
 | `authority` | `Pubkey` | Who can update this config |
 | `bump` | `u8` | PDA bump |
 
@@ -180,7 +179,6 @@ classDiagram
     +min_operational_fee: u64
     +bridge_fee: u64
     +treasury: Pubkey
-    +relayer: Pubkey
     +authority: Pubkey
     +bump: u8
   }
@@ -215,14 +213,15 @@ initialize(validators: Vec<Pubkey>, last_id: Option<u64>, min_operational_fee: u
 
 **Purpose:** One-time bootstrap. Creates `ValidatorSet`, `Vault`, and `FeeConfig` PDAs.
 
-**Caller:** Any signer (becomes `fee_config.authority`). Runs once — PDA `init` prevents re-initialization.
+**Caller:** Program upgrade authority (becomes `fee_config.authority`). Runs once — PDA `init` prevents re-initialization.
 
-**Required accounts:** `signer`, `validator_set`, `vault`, `fee_config`, `treasury`, `relayer`, `system_program`
+**Required accounts:** `signer`, `validator_set`, `vault`, `fee_config`, `program_config`, `treasury`, `program`, `program_data`, `system_program`
 
 **Validation:**
 - `4 <= validators.len() <= 128`
 - All `validators` must be unique
-- `treasury` and `relayer` must not be `Pubkey::default()`
+- `treasury` must not be `Pubkey::default()`
+- `program_data.upgrade_authority_address == signer`
 - `min_operational_fee + bridge_fee` must not overflow `u64`
 
 **State changes:**
@@ -230,7 +229,7 @@ initialize(validators: Vec<Pubkey>, last_id: Option<u64>, min_operational_fee: u
 - `validator_set.threshold = calculate_threshold(validators.len())`
 - `validator_set.last_batch_id = last_id` (defaults to 0)
 - `validator_set.bridge_request_count = 0`
-- `fee_config.{min_operational_fee, bridge_fee, treasury, relayer, authority}` initialised
+- `fee_config.{min_operational_fee, bridge_fee, treasury, authority}` initialized
 
 ---
 
@@ -244,10 +243,10 @@ bridge_request(amount: u64, receiver: String, destination_chain: String, fees: u
 
 **Caller:** End user.
 
-**Required accounts:** `signer`, `validator_set`, `signers_ata`, `vault`, `vault_ata`, `mint`, `token_registry`, `token_program`, `system_program`, `associated_token_program`, `fee_config`, `treasury`, `relayer`
+**Required accounts:** `signer`, `validator_set`, `signers_ata`, `vault`, `vault_ata`, `mint`, `token_registry`, `token_program`, `system_program`, `associated_token_program`, `fee_config`, `treasury`
 
 **Fee flow (SOL):**
-- `bridge_fee → relayer`
+- `bridge_fee → vault (escrow, later paid out during bridge_transaction)`
 - `fees - bridge_fee → treasury` (must be `>= min_operational_fee`)
 
 **Token flow:**
@@ -274,7 +273,7 @@ bridge_request(amount: u64, receiver: String, destination_chain: String, fees: u
 bridge_transaction()
 ```
 
-**Purpose:** Inbound batch settlement. Mints or releases tokens to up to 5 recipients in one transaction after validator quorum is met.
+**Purpose:** Inbound batch settlement. Mints or releases tokens to up to 3 recipients in one transaction after validator quorum is met.
 
 **Caller:** Relayer (pays rent for any new recipient ATAs).
 
@@ -292,7 +291,7 @@ On-chain, receivers are turned into `TransferItem` entries and a deduplicated mi
 Sections are fully positional and sized from `mints.len()` and `transfers.len()`. Every account address is validated against its canonical/expected value before use.
 
 **Validation:**
-- `1 <= transfers.len() <= 5`
+- `1 <= transfers.len() <= 3`
 - `1 <= mints.len() <= transfers.len()` (every mint referenced by at least one transfer)
 - All `mint_index` values in bounds; all `amount` values > 0
 - `batch_id > validator_set.last_batch_id`
@@ -355,8 +354,7 @@ bridge_vsu(added: Vec<Pubkey>, removed: Vec<Pubkey>, batch_id: u64)
 update_fee_config(
     min_operational_fee: Option<u64>,
     bridge_fee: Option<u64>,
-    update_treasury: Option<bool>,
-    update_relayer: Option<bool>
+    update_treasury: Option<bool>
 )
 ```
 
@@ -364,16 +362,15 @@ update_fee_config(
 
 **Caller:** `fee_config.authority` only (`has_one` constraint).
 
-**Required accounts:** `authority`, `fee_config`, `new_treasury`, `new_relayer`
+**Required accounts:** `authority`, `fee_config`, `new_treasury`
 
 **Validation:**
 - `new_op_fee + new_bridge_fee` must not overflow `u64`
 - If updating treasury: `new_treasury.key() != Pubkey::default()`
-- If updating relayer: `new_relayer.key() != Pubkey::default()`
 
-To update treasury or relayer: pass the new address in the account field AND `Some(true)` in the flag. Passing `None` for the flag keeps the existing address.
+To update treasury: pass the new address in the account field AND `Some(true)` in the flag. Passing `None` for the flag keeps the existing address.
 
-**Emits:** `FeeConfigUpdatedEvent { min_operational_fee, bridge_fee, treasury, relayer }`
+**Emits:** `FeeConfigUpdatedEvent { min_operational_fee, bridge_fee, treasury }`
 
 ---
 

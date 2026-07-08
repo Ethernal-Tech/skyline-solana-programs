@@ -367,7 +367,8 @@
         "This instruction allows changing the set of validators that control bridge operations.",
         "The first call creates a validator set change proposal, and subsequent calls from validators",
         "approve the proposal. Requires approval from the current validator set meeting the consensus",
-        "threshold and maintains the same validation rules as initialization (unique validators, 4-10 count).",
+        "threshold and maintains validation rules (unique validators, default-key rejection,",
+        "per-call max change, and resulting validator count bounds).",
         "",
         "# Arguments",
         "* `ctx` - The context containing accounts for creating or approving the validator set change",
@@ -376,7 +377,8 @@
         "* `batch_id` - The batch ID of the validator set change (must be greater than last_batch_id)",
         "",
         "# Errors",
-        "* `MaxValidatorsExceeded` - If more than 10 validators would result from the change",
+        "* `MaxValidatorsChangeExceeded` - If `added` or `removed` exceeds `MAX_VALIDATORS_CHANGE`",
+        "* `MaxValidatorsExceeded` - If more than 128 validators would result from the change",
         "* `MinValidatorsNotMet` - If fewer than 4 validators would result from the change",
         "* `AddingExistingSigner` - If attempting to add a validator that already exists",
         "* `InvalidBatchId` - If the batch_id is not greater than the last_batch_id",
@@ -587,7 +589,7 @@
         "Initializes the full bridge system:",
         "1. ValidatorSet — validators, threshold, bump",
         "2. Vault        — bump",
-        "3. FeeConfig    — operational fee, relayer fee estimate, treasury, authority",
+        "3. FeeConfig    — operational fee, bridge fee estimate, treasury, authority",
         "4. ProgramConfig — on-chain version metadata (readable without a tx)",
         "",
         "# Arguments",
@@ -598,6 +600,7 @@
         "* `bridge_fee`           - Estimated destination chain gas cost (lamports)",
         "",
         "# Errors",
+        "* `Unauthorized`           - Signer is not the program upgrade authority",
         "* `ValidatorsNotUnique`    - Duplicate validators provided",
         "* `MaxValidatorsExceeded`  - Too many validators",
         "* `MinValidatorsNotMet`    - Too few validators"
@@ -616,7 +619,8 @@
         {
           "name": "signer",
           "docs": [
-            "The signer who is initializing the bridge system"
+            "The signer who is initializing the bridge system.",
+            "Must be the program's upgrade authority (checked via `program_data`)."
           ],
           "writable": true,
           "signer": true
@@ -734,6 +738,19 @@
           ]
         },
         {
+          "name": "program",
+          "docs": [
+            "This program's executable account — used to derive / verify `program_data`."
+          ],
+          "address": "CkTNcuk9EELmuR65eCfzKfz8XpDvJ27FPFHauGHVD1E9"
+        },
+        {
+          "name": "program_data",
+          "docs": [
+            "Program data account holding the upgrade authority."
+          ]
+        },
+        {
           "name": "system_program",
           "docs": [
             "The system program for account creation"
@@ -766,6 +783,26 @@
     },
     {
       "name": "register_lock_unlock_token",
+      "docs": [
+        "Register a pre-existing SPL mint as a LockUnlock bridgeable token.",
+        "",
+        "Whitelists an existing mint (e.g. WSOL, USDC) for bridging via lock/unlock:",
+        "on `bridge_request` tokens are transferred into the vault; on `bridge_transaction`",
+        "they are transferred back to the recipient.",
+        "",
+        "Creates `TokenRegistry` (is_lock_unlock = true) and `TokenIdGuard` PDAs.",
+        "",
+        "Only callable by the bridge authority.",
+        "",
+        "# Arguments",
+        "* `ctx`                 - Instruction context",
+        "* `token_id`            - Unique gateway-compatible uint16 identifier",
+        "* `min_bridging_amount` - Minimum raw token amount allowed per bridge_request",
+        "",
+        "# Errors",
+        "* `CustomError::Unauthorized` - Signer is not the bridge authority",
+        "* `AlreadyInUse`              - mint or token_id already registered (Anchor init)"
+      ],
       "discriminator": [
         102,
         136,
@@ -1699,101 +1736,111 @@
     },
     {
       "code": 6018,
+      "name": "InvalidValidatorKey",
+      "msg": "Validator key cannot be default pubkey"
+    },
+    {
+      "code": 6019,
+      "name": "MaxValidatorsChangeExceeded",
+      "msg": "Too many validators changed in a single update"
+    },
+    {
+      "code": 6020,
       "name": "AddingAndRemovingSameSigner",
       "msg": "Cannot add and remove the same signer"
     },
     {
-      "code": 6019,
+      "code": 6021,
       "name": "TooManyValidatorsRemoved",
       "msg": "Cannot remove more validators than will exist after additions"
     },
     {
-      "code": 6020,
+      "code": 6022,
       "name": "InsufficientFee",
       "msg": "Insufficient bridge fee provided"
     },
     {
-      "code": 6021,
+      "code": 6023,
       "name": "InvalidTreasury",
       "msg": "Treasury account does not match fee config"
     },
     {
-      "code": 6022,
+      "code": 6024,
       "name": "Unauthorized",
       "msg": "Unauthorized action attempted"
     },
     {
-      "code": 6023,
+      "code": 6025,
       "name": "FeeConfigOverflow",
       "msg": "Fee values overflow when combined — reduce min_operational_fee or bridge_fee"
     },
     {
-      "code": 6024,
+      "code": 6026,
       "name": "BridgingAmountTooLow",
       "msg": "Bridging amount is below the minimum threshold"
     },
     {
-      "code": 6025,
+      "code": 6027,
       "name": "TokenIdAlreadyRegistered",
       "msg": "Token ID is already registered to another mint"
     },
     {
-      "code": 6026,
+      "code": 6028,
       "name": "TokenNotRegistered",
       "msg": "Mint is not registered in the token registry"
     },
     {
-      "code": 6027,
+      "code": 6029,
       "name": "NotLockUnlock",
       "msg": "Token is not a Lock/Unlock token"
     },
     {
-      "code": 6028,
+      "code": 6030,
       "name": "NotMintBurn",
       "msg": "Token is not a Mint/Burn token"
     },
     {
-      "code": 6029,
+      "code": 6031,
       "name": "InsufficientSigners",
       "msg": "Not enough validators signed this transaction"
     },
     {
-      "code": 6030,
+      "code": 6032,
       "name": "InvalidMintList",
       "msg": "Mint list is empty or inconsistent with transfers."
     },
     {
-      "code": 6031,
+      "code": 6033,
       "name": "InvalidMintIndex",
       "msg": "mint_index is out of bounds for the provided mints list."
     },
     {
-      "code": 6032,
+      "code": 6034,
       "name": "InvalidRemainingAccounts",
       "msg": "remaining_accounts layout is inconsistent with instruction arguments."
     },
     {
-      "code": 6033,
+      "code": 6035,
       "name": "AccountNotFound",
       "msg": "A required account was not found in the transaction account list."
     },
     {
-      "code": 6034,
+      "code": 6036,
       "name": "InvalidTransferCount",
       "msg": "Transfer count must be greater or equal than 1."
     },
     {
-      "code": 6035,
+      "code": 6037,
       "name": "VersionStringTooLong",
       "msg": "Program version string from build exceeds max storage length"
     },
     {
-      "code": 6036,
+      "code": 6038,
       "name": "InsufficientVaultLamports",
       "msg": "Vault has insufficient lamports to fulfil the native SOL transfer"
     },
     {
-      "code": 6037,
+      "code": 6039,
       "name": "InvalidSignedPayload",
       "msg": "Validator-signed payload is invalid or inconsistent with the instruction"
     }
@@ -2399,17 +2446,6 @@
     }
   ],
   "constants": [
-    {
-      "name": "BRIDGING_REQUEST_SEED",
-      "docs": [
-        "Seed string used to derive BridgingRequest Program Derived Addresses (PDAs).",
-        "",
-        "This seed is combined with the sender's public key to create unique",
-        "addresses for each bridging request account."
-      ],
-      "type": "bytes",
-      "value": "[98, 114, 105, 100, 103, 105, 110, 103, 95, 114, 101, 113, 117, 101, 115, 116]"
-    },
     {
       "name": "DISC",
       "docs": [

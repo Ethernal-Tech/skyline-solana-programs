@@ -21,6 +21,6 @@ custom-panic = []
 solana = []
 
 [dependencies]
-anchor-lang = { version = "0.32.1", features = ["init-if-needed"] }
+anchor-lang = { version = "0.32.1" }
 anchor-spl = { version = "0.32.1", features = ["token", "metadata"]}
 mpl-token-metadata = { version = "5.1.1" }

@@ -50,6 +50,19 @@ export const LIMITS = {
   MAX_TX_VALIDATORS: 29 // Solana transaction size limit
 } as const;
 
+/** BPF Upgradeable Loader program ID (not always exported by @solana/web3.js). */
+const BPF_LOADER_UPGRADEABLE_PROGRAM_ID = new web3.PublicKey(
+  "BPFLoaderUpgradeab1e11111111111111111111111"
+);
+
+/** Derive the BPF Upgradeable Loader ProgramData address for a program. */
+export function programDataAddress(programId: web3.PublicKey): web3.PublicKey {
+  return web3.PublicKey.findProgramAddressSync(
+    [programId.toBuffer()],
+    BPF_LOADER_UPGRADEABLE_PROGRAM_ID
+  )[0];
+}
+
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -530,6 +543,7 @@ export class InitializeHelper {
       .accountsPartial({
         signer: this.owner.publicKey,
         treasury,
+        programData: programDataAddress(this.program.programId),
         // Older deployed builds still declare this unchecked account in the IDL.
         relayer
       } as Record<string, web3.PublicKey>);

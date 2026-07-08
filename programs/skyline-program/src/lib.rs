@@ -34,7 +34,6 @@
 //! - `bridge_request`: Create a cross-chain transfer request and transfer source tokens to vault
 //! - `create_or_approve_vsu`: Create or approve a validator set update (requires current validator approval)
 //! - `bridge_transaction`: Create or approve a bridging transaction to transfer tokens to recipients (requires validator approval)
-//! - `close_request`: Close a bridging request account (requires validator approval)
 
 use anchor_lang::prelude::*;
 
@@ -70,7 +69,7 @@ pub mod skyline_program {
     /// Initializes the full bridge system:
     ///   1. ValidatorSet — validators, threshold, bump
     ///   2. Vault        — bump
-    ///   3. FeeConfig    — operational fee, relayer fee estimate, treasury, authority
+    ///   3. FeeConfig    — operational fee, bridge fee estimate, treasury, authority
     ///   4. ProgramConfig — on-chain version metadata (readable without a tx)
     ///
     /// # Arguments
@@ -81,6 +80,7 @@ pub mod skyline_program {
     /// * `bridge_fee`           - Estimated destination chain gas cost (lamports)
     ///
     /// # Errors
+    /// * `Unauthorized`           - Signer is not the program upgrade authority
     /// * `ValidatorsNotUnique`    - Duplicate validators provided
     /// * `MaxValidatorsExceeded`  - Too many validators
     /// * `MinValidatorsNotMet`    - Too few validators
@@ -130,7 +130,8 @@ pub mod skyline_program {
     /// This instruction allows changing the set of validators that control bridge operations.
     /// The first call creates a validator set change proposal, and subsequent calls from validators
     /// approve the proposal. Requires approval from the current validator set meeting the consensus
-    /// threshold and maintains the same validation rules as initialization (unique validators, 4-10 count).
+    /// threshold and maintains validation rules (unique validators, default-key rejection,
+    /// per-call max change, and resulting validator count bounds).
     ///
     /// # Arguments
     /// * `ctx` - The context containing accounts for creating or approving the validator set change
@@ -139,7 +140,8 @@ pub mod skyline_program {
     /// * `batch_id` - The batch ID of the validator set change (must be greater than last_batch_id)
     ///
     /// # Errors
-    /// * `MaxValidatorsExceeded` - If more than 10 validators would result from the change
+    /// * `MaxValidatorsChangeExceeded` - If `added` or `removed` exceeds `MAX_VALIDATORS_CHANGE`
+    /// * `MaxValidatorsExceeded` - If more than 128 validators would result from the change
     /// * `MinValidatorsNotMet` - If fewer than 4 validators would result from the change
     /// * `AddingExistingSigner` - If attempting to add a validator that already exists
     /// * `InvalidBatchId` - If the batch_id is not greater than the last_batch_id

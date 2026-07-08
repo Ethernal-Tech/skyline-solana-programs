@@ -1,6 +1,6 @@
 //! Bridge transaction instruction for transferring tokens to multiple recipients.
 //!
-//! Supports up to 5 recipients in a single batched instruction. Each transfer
+//! Supports up to 3 recipients in a single batched instruction. Each transfer
 //! specifies a recipient wallet, a token index (into a deduplicated token-id list),
 //! and an amount.
 //!

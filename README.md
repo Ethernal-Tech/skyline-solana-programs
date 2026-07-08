@@ -81,9 +81,11 @@ docker run --rm \
 # Creates an ephemeral local wallet keypair required by Anchor.
 # --skip-build reuses the already-built program from image build time.
 #
-# Mount ./tests so local test changes are picked up without rebuilding the image.
+# Mount ./tests and Anchor.toml so local test/config changes are picked up
+# without rebuilding the image (program.so still comes from the image).
 docker run --rm \
   -v "$(pwd)/tests:/app/tests" \
+  -v "$(pwd)/Anchor.toml:/app/Anchor.toml" \
   --entrypoint sh \
   solana-program-builder \
   -lc "mkdir -p /root/.config/solana && solana-keygen new --no-bip39-passphrase -s -o /root/.config/solana/id.json && anchor test --skip-build"
