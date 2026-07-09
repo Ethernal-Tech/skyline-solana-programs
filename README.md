@@ -63,6 +63,8 @@ docker build -f dockerfile -t solana-program-builder .
 
 ### 2. Export Artifacts to `program_build`
 
+Firstly read the .so naming convention [here](./program_build/README.md)
+
 ```bash
 # Runs container and automatically copies:
 # - skyline_program-keypair.json
