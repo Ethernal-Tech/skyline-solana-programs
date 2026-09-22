@@ -1,8 +1,10 @@
 //! Bridge transaction instruction for transferring tokens to multiple recipients.
 //!
-//! Supports up to 3 recipients in a single batched instruction. Each transfer
-//! specifies a recipient wallet, a token index (into a deduplicated token-id list),
-//! and an amount.
+//! Supports any number of recipients in a single batched instruction. Each
+//! transfer specifies a recipient wallet, a token index (into a deduplicated
+//! token-id list), and an amount. The program sets no upper bound: a batch is
+//! limited only by what fits in a transaction (size, account locks, compute),
+//! so the relayer is responsible for sizing batches it can actually land.
 //!
 //! All variable accounts are passed via `remaining_accounts` in a strict
 //! positional layout — no scanning, O(1) indexing throughout.
@@ -60,9 +62,6 @@ use anchor_spl::{
 };
 
 use crate::*;
-
-/// Maximum number of recipients allowed in a single batched bridge transaction.
-pub const MAX_TRANSFERS: usize = 3;
 
 /// Token id and amount pair inside a validator-signed [`SolanaPayload`].
 ///
@@ -175,10 +174,6 @@ fn derive_bridge_data(payload: &SolanaPayload) -> Result<(Vec<u16>, Vec<Transfer
         let mint_index = match token_ids.iter().position(|id| *id == token_id) {
             Some(idx) => idx as u8,
             None => {
-                require!(
-                    token_ids.len() < MAX_TRANSFERS,
-                    CustomError::InvalidMintList
-                );
                 token_ids.push(token_id);
                 (token_ids.len() - 1) as u8
             }
@@ -208,9 +203,8 @@ impl<'info> BridgeTransaction<'info> {
     ///
     /// # Errors
     /// * `InvalidBatchId`           - `batch_id` ≤ `last_batch_id` (caught by constraint)
-    /// * `InvalidTransferCount`     - 0 or more than 5 transfers provided
+    /// * `InvalidTransferCount`     - No transfers provided
     /// * `InvalidMintList`          - Token-id list empty, or longer than `transfers`
-    /// * `InvalidMintIndex`         - Any `mint_index` out of bounds of the token-id list
     /// * `InvalidAmount`            - Any transfer amount is zero
     /// * `InvalidRemainingAccounts` - `remaining_accounts` count doesn't match expected layout
     /// * `InvalidMintList`          - A mint account key doesn't match its TokenRegistry
@@ -225,7 +219,7 @@ impl<'info> BridgeTransaction<'info> {
     /// * `InsufficientVaultLamports` - A native-SOL transfer would drop the vault PDA below rent-exempt
     ///
     /// # Process Flow
-    /// 1.  Validate transfer count (1–5) and token-id list bounds
+    /// 1.  Validate transfer count (≥ 1) and token-id list bounds
     /// 2.  Validate all mint_index values and amounts per transfer
     /// 3.  Compute section offsets, validate total remaining_accounts count
     /// 4.  Slice remaining_accounts into 6 typed sections
@@ -248,7 +242,7 @@ impl<'info> BridgeTransaction<'info> {
         // ── 1. Validate transfer count and batch_id ────────────────────────────
 
         require!(
-            !signed_payload.receivers.is_empty() && signed_payload.receivers.len() <= MAX_TRANSFERS,
+            !signed_payload.receivers.is_empty(),
             CustomError::InvalidTransferCount
         );
 
