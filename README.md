@@ -6,12 +6,14 @@ Builds the Skyline Solana program in a reproducible, isolated environment.
 
 It installs:
 - Rust 1.89.0
-- Agave (Solana CLI) v3.0.13
+- Agave (Solana CLI) v4.2.2
 - Node.js 20 LTS + Yarn
 - Anchor CLI v0.32.1
 
+The program is compiled for **SBPF v3** (`cargo-build-sbf --arch v3`).
+
 It then compiles the program and produces artifacts:
-- `target/deploy/skyline_program.so` — compiled program binary
+- `target/deploy/skyline_program.so` — compiled program binary (SBPF v3)
 - `target/deploy/skyline_program-keypair.json` — program keypair (fixed Program ID)
 - `target/idl/skyline_program.json` — Anchor IDL
 

@@ -2,7 +2,7 @@
   "address": "CkTNcuk9EELmuR65eCfzKfz8XpDvJ27FPFHauGHVD1E9",
   "metadata": {
     "name": "skyline_program",
-    "version": "0.2.0",
+    "version": "0.3.0",
     "spec": "0.1.0",
     "description": "Created with Anchor"
   },
@@ -1811,36 +1811,31 @@
     },
     {
       "code": 6033,
-      "name": "InvalidMintIndex",
-      "msg": "mint_index is out of bounds for the provided mints list."
-    },
-    {
-      "code": 6034,
       "name": "InvalidRemainingAccounts",
       "msg": "remaining_accounts layout is inconsistent with instruction arguments."
     },
     {
-      "code": 6035,
+      "code": 6034,
       "name": "AccountNotFound",
       "msg": "A required account was not found in the transaction account list."
     },
     {
-      "code": 6036,
+      "code": 6035,
       "name": "InvalidTransferCount",
       "msg": "Transfer count must be greater or equal than 1."
     },
     {
-      "code": 6037,
+      "code": 6036,
       "name": "VersionStringTooLong",
       "msg": "Program version string from build exceeds max storage length"
     },
     {
-      "code": 6038,
+      "code": 6037,
       "name": "InsufficientVaultLamports",
       "msg": "Vault has insufficient lamports to fulfil the native SOL transfer"
     },
     {
-      "code": 6039,
+      "code": 6038,
       "name": "InvalidSignedPayload",
       "msg": "Validator-signed payload is invalid or inconsistent with the instruction"
     }

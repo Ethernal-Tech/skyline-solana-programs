@@ -273,7 +273,7 @@ bridge_request(amount: u64, receiver: String, destination_chain: String, fees: u
 bridge_transaction()
 ```
 
-**Purpose:** Inbound batch settlement. Mints or releases tokens to up to 3 recipients in one transaction after validator quorum is met.
+**Purpose:** Inbound batch settlement. Mints or releases tokens to any number of recipients in one transaction after validator quorum is met. The program enforces no upper bound — batch size is bounded only by transaction limits (size, account locks, compute), so the relayer must size batches it can actually land.
 
 **Caller:** Relayer (pays rent for any new recipient ATAs).
 

@@ -192,9 +192,6 @@ pub enum CustomError {
     #[msg("Mint list is empty or inconsistent with transfers.")]
     InvalidMintList,
 
-    #[msg("mint_index is out of bounds for the provided mints list.")]
-    InvalidMintIndex,
-
     #[msg("remaining_accounts layout is inconsistent with instruction arguments.")]
     InvalidRemainingAccounts,
 
