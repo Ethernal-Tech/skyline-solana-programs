@@ -40,6 +40,9 @@ use anchor_spl::{
 };
 
 /// Account structure for the hot_wallet_increment instruction.
+///
+/// `#[event_cpi]` appends the `event_authority` PDA and `program` accounts used by `emit_cpi!`.
+#[event_cpi]
 #[derive(Accounts)]
 pub struct HotWalletIncrement<'info> {
     /// The user depositing liquidity into the bridge hot wallet.
@@ -230,7 +233,8 @@ impl<'info> HotWalletIncrement<'info> {
             )?;
         }
 
-        emit!(HotWalletIncrementEvent {
+        // Recorded as a self-CPI (see BridgeRequest) rather than a log line.
+        emit_cpi!(HotWalletIncrementEvent {
             sender: signer.key(),
             mint: mint_key,
             amount,
