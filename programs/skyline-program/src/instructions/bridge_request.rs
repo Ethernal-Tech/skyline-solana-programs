@@ -17,6 +17,9 @@ use anchor_spl::{
 /// This struct defines the accounts required to create a bridging request.
 /// It includes the user's token account, the vault account, the vault's associated
 /// token account (conditionally created), and the token mint for the tokens being bridged.
+///
+/// `#[event_cpi]` appends the `event_authority` PDA and `program` accounts used by `emit_cpi!`.
+#[event_cpi]
 #[derive(Accounts)]
 pub struct BridgeRequest<'info> {
     /// The user initiating the bridge request
@@ -243,8 +246,10 @@ impl<'info> BridgeRequest<'info> {
             transfer_checked(cpi_context, amount, mint.decimals)?;
         }
 
-        // Emit bridge request event for validators to process
-        emit!(BridgeRequestEvent {
+        // Emit bridge request event for validators to process. emit_cpi! records it as a self-CPI
+        // signed by the event_authority PDA, so it is not subject to log truncation and cannot be
+        // forged by another program in the same transaction.
+        emit_cpi!(BridgeRequestEvent {
             sender: signer.key(),
             amount,
             receiver,
