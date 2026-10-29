@@ -1669,6 +1669,57 @@ export class EventParser {
     this.connection = connection;
   }
 
+  // Anchor's EVENT_IX_TAG (0x1d9acb512ea545e4) in little-endian, prefixed to
+  // every `emit_cpi!` self-CPI instruction before the event discriminator.
+  private static readonly EVENT_IX_TAG_LE = Buffer.from([
+    0xe4, 0x45, 0xa5, 0x2e, 0x51, 0xcb, 0x9a, 0x1d
+  ]);
+
+  /**
+   * Decode all events emitted via `emit_cpi!` in a transaction. These are
+   * recorded as self-CPI inner instructions, not as `Program data:` logs.
+   * Event names are camelCased by the Anchor TS coder (e.g. `hotWalletIncrementEvent`).
+   */
+  async parseCpiEvents(
+    signature: string
+  ): Promise<{ name: string; data: any }[]> {
+    await new Promise((resolve) => setTimeout(resolve, 500));
+
+    const tx = await this.connection.getTransaction(signature, {
+      commitment: "confirmed",
+      maxSupportedTransactionVersion: 0
+    });
+
+    if (!tx || !tx.meta || !tx.meta.innerInstructions) {
+      console.error("Transaction not found or missing inner instructions");
+      return [];
+    }
+
+    const accountKeys = tx.transaction.message.getAccountKeys({
+      accountKeysFromLookups: tx.meta.loadedAddresses
+    });
+
+    const events: { name: string; data: any }[] = [];
+    for (const inner of tx.meta.innerInstructions) {
+      for (const ix of inner.instructions) {
+        if (!accountKeys.get(ix.programIdIndex)?.equals(this.program.programId)) {
+          continue;
+        }
+        const data = Buffer.from(anchor.utils.bytes.bs58.decode(ix.data));
+        if (!data.subarray(0, 8).equals(EventParser.EVENT_IX_TAG_LE)) {
+          continue;
+        }
+        const event = this.program.coder.events.decode(
+          data.subarray(8).toString("base64")
+        );
+        if (event) {
+          events.push(event);
+        }
+      }
+    }
+    return events;
+  }
+
   /**
    * Parse BridgeRequestEvent from transaction signature
    */
