@@ -36,8 +36,22 @@ impl<'info> BridgeVSU<'info> {
     ) -> Result<()> {
         let validator_set = &mut ctx.accounts.validator_set;
 
+        let max_change = MAX_VALIDATORS_CHANGE as usize;
+        require!(
+            added.len() <= max_change,
+            CustomError::MaxValidatorsChangeExceeded
+        );
+        require!(
+            removed.len() <= max_change,
+            CustomError::MaxValidatorsChangeExceeded
+        );
+
         // Validate added list
         if !added.is_empty() {
+            require!(
+                added.iter().all(|pk| *pk != Pubkey::default()),
+                CustomError::InvalidValidatorKey
+            );
             let mut added_sorted = added.clone();
             added_sorted.sort();
             added_sorted.dedup();

@@ -20,6 +20,9 @@ test = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 \"tests/**/*.ts\""
 
 [test]
 startup_wait = 10000
+# Deploy as upgradeable so ProgramData.upgrade_authority_address is
+# provider.wallet — required by initialize's upgrade-authority gate.
+upgradeable = true
 [[test.genesis]]
 address = "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s"
 program = "program_build/mpl_token_metadata.so"
