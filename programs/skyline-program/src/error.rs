@@ -130,6 +130,12 @@ pub enum CustomError {
     #[msg("Duplicate validators found in removed list")]
     DuplicateValidatorsInRemoved,
 
+    #[msg("Validator key cannot be default pubkey")]
+    InvalidValidatorKey,
+
+    #[msg("Too many validators changed in a single update")]
+    MaxValidatorsChangeExceeded,
+
     /// Cannot add and remove the same signer.
     ///     
     /// This error occurs when the same validator is present in both the added and removed lists during a validator set update.
@@ -185,9 +191,6 @@ pub enum CustomError {
 
     #[msg("Mint list is empty or inconsistent with transfers.")]
     InvalidMintList,
-
-    #[msg("mint_index is out of bounds for the provided mints list.")]
-    InvalidMintIndex,
 
     #[msg("remaining_accounts layout is inconsistent with instruction arguments.")]
     InvalidRemainingAccounts,

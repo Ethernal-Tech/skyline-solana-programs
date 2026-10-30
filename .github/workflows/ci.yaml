@@ -47,7 +47,7 @@ jobs:
 
       - name: Install Solana CLI
         run: |
-          sh -c "$(curl -sSfL https://release.anza.xyz/v3.0.13/install)"
+          sh -c "$(curl -sSfL https://release.anza.xyz/v4.2.2/install)"
           echo "$HOME/.local/share/solana/install/active_release/bin" >> "$GITHUB_PATH"
 
       - name: Verify Solana toolchain
@@ -64,5 +64,19 @@ jobs:
       - name: Install JS dependencies
         run: yarn install --frozen-lockfile
 
+      # Mirrors the dockerfile. `cargo-build-sbf` defaults to --arch v0, which the
+      # loader rejects on deploy and upgrade, so the arch is passed explicitly.
+      # The IDL is built separately because `anchor build` forwards these same args
+      # to its `cargo test` IDL step, which rejects --arch.
+      - name: Build program (SBPF v3)
+        run: anchor build --no-idl -- --arch v3
+
+      - name: Build IDL + TypeScript types
+        run: |
+          mkdir -p target/idl target/types
+          anchor idl build \
+            -o target/idl/skyline_program.json \
+            -t target/types/skyline_program.ts
+
       - name: Run Anchor tests
-        run: anchor test
+        run: anchor test --skip-build

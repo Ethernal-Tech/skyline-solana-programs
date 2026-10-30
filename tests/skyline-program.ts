@@ -1398,6 +1398,24 @@ describe("skyline-program", () => {
           "DuplicateValidatorsInAdded"
         );
       });
+
+      it("rejects added list containing default pubkey", async function () {
+        const vs = await fixture.getValidatorSet();
+        const batchId = await fixture.nextBatchId();
+        const signers = validators
+          .filter((v) => vs.signers.some((s) => s.equals(v.publicKey)))
+          .slice(0, vs.threshold);
+
+        await fixture.bridgeVSU.expectError(
+          {
+            added: [new web3.PublicKey("11111111111111111111111111111111")],
+            removed: [],
+            batchId,
+            signerKeypairs: signers
+          },
+          "InvalidValidatorKey"
+        );
+      });
     });
 
     describe("error: DuplicateValidatorsInRemoved", function () {
@@ -1603,6 +1621,56 @@ describe("skyline-program", () => {
             signerKeypairs: signers
           },
           "MinValidatorsNotMet"
+        );
+      });
+    });
+
+    describe("error: MaxValidatorsChangeExceeded", function () {
+      it("rejects when trying to add more than MAX_VALIDATORS_CHANGE", async function () {
+        const vs = await fixture.getValidatorSet();
+        const batchId = await fixture.nextBatchId();
+        const signers = validators
+          .filter((v) => vs.signers.some((s) => s.equals(v.publicKey)))
+          .slice(0, vs.threshold);
+
+        // Use 11 fresh keys (MAX_VALIDATORS_CHANGE is 10)
+        const oversizedAdded = Array.from({ length: LIMITS.MAX_VALIDATORS_CHANGE + 1 })
+          .map(() => web3.Keypair.generate().publicKey);
+
+        await fixture.bridgeVSU.expectError(
+          {
+            added: oversizedAdded,
+            removed: [],
+            batchId,
+            signerKeypairs: []
+          },
+          "MaxValidatorsChangeExceeded"
+        );
+      });
+
+      it("rejects when trying to remove more than MAX_VALIDATORS_CHANGE", async function () {
+        const vs = await fixture.getValidatorSet();
+        const batchId = await fixture.nextBatchId();
+        const signers = validators
+          .filter((v) => vs.signers.some((s) => s.equals(v.publicKey)))
+          .slice(0, vs.threshold);
+
+        // Keep entries valid, but exceed per-call remove cap.
+        const oversizedRemoved = [
+          ...vs.signers,
+          ...Array.from({
+            length: LIMITS.MAX_VALIDATORS_CHANGE + 1 - vs.signers.length
+          }).map(() => web3.Keypair.generate().publicKey)
+        ];
+
+        await fixture.bridgeVSU.expectError(
+          {
+            added: [],
+            removed: oversizedRemoved,
+            batchId,
+            signerKeypairs: []
+          },
+          "MaxValidatorsChangeExceeded"
         );
       });
     });

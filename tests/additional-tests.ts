@@ -510,10 +510,18 @@ describe("additional program coverage", () => {
       const relayerAfter = await provider.connection.getBalance(relayer.publicKey);
       const vaultAfterTx = await provider.connection.getBalance(vaultPDA);
 
-      const tx = await provider.connection.getTransaction(sig, {
-        commitment: "confirmed",
-        maxSupportedTransactionVersion: 0
-      });
+      // RPC needs a moment after confirmation before the tx is queryable. Retry
+      // rather than let `?? 0` below silently substitute a zero fee.
+      let tx: Awaited<ReturnType<typeof provider.connection.getTransaction>> = null;
+      for (let i = 0; i < 20 && tx === null; i++) {
+        await new Promise((r) => setTimeout(r, 500));
+        tx = await provider.connection.getTransaction(sig, {
+          commitment: "confirmed",
+          maxSupportedTransactionVersion: 0
+        });
+      }
+      expect(tx, "transaction should be queryable for fee accounting").to.not.be
+        .null;
       const txFee = tx?.meta?.fee ?? 0;
 
       // Relayer receives fee_amount from vault and pays the network tx fee.

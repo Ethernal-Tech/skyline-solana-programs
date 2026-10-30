@@ -28,13 +28,6 @@ pub const DISC: u32 = 8;
 #[constant]
 pub const VALIDATOR_SET_SEED: &[u8] = b"validator-set";
 
-/// Seed string used to derive BridgingRequest Program Derived Addresses (PDAs).
-///
-/// This seed is combined with the sender's public key to create unique
-/// addresses for each bridging request account.
-#[constant]
-pub const BRIDGING_REQUEST_SEED: &[u8] = b"bridging_request";
-
 /// Minimum number of validators required for the bridge system.
 ///
 /// This ensures sufficient decentralization and security for the bridge.

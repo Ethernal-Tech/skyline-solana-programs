@@ -6,12 +6,14 @@ Builds the Skyline Solana program in a reproducible, isolated environment.
 
 It installs:
 - Rust 1.89.0
-- Agave (Solana CLI) v3.0.13
+- Agave (Solana CLI) v4.2.2
 - Node.js 20 LTS + Yarn
 - Anchor CLI v0.32.1
 
+The program is compiled for **SBPF v3** (`cargo-build-sbf --arch v3`).
+
 It then compiles the program and produces artifacts:
-- `target/deploy/skyline_program.so` — compiled program binary
+- `target/deploy/skyline_program.so` — compiled program binary (SBPF v3)
 - `target/deploy/skyline_program-keypair.json` — program keypair (fixed Program ID)
 - `target/idl/skyline_program.json` — Anchor IDL
 
@@ -63,6 +65,8 @@ docker build -f dockerfile -t solana-program-builder .
 
 ### 2. Export Artifacts to `program_build`
 
+Firstly read the .so naming convention [here](./program_build/README.md)
+
 ```bash
 # Runs container and automatically copies:
 # - skyline_program-keypair.json
@@ -81,9 +85,11 @@ docker run --rm \
 # Creates an ephemeral local wallet keypair required by Anchor.
 # --skip-build reuses the already-built program from image build time.
 #
-# Mount ./tests so local test changes are picked up without rebuilding the image.
+# Mount ./tests and Anchor.toml so local test/config changes are picked up
+# without rebuilding the image (program.so still comes from the image).
 docker run --rm \
   -v "$(pwd)/tests:/app/tests" \
+  -v "$(pwd)/Anchor.toml:/app/Anchor.toml" \
   --entrypoint sh \
   solana-program-builder \
   -lc "mkdir -p /root/.config/solana && solana-keygen new --no-bip39-passphrase -s -o /root/.config/solana/id.json && anchor test --skip-build"
