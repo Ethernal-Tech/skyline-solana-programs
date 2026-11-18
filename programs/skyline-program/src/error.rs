@@ -214,4 +214,7 @@ pub enum CustomError {
     /// the bridge_transaction instruction arguments.
     #[msg("Validator-signed payload is invalid or inconsistent with the instruction")]
     InvalidSignedPayload,
+
+    #[msg("New authority must sign, be non-default, and differ from the current authority")]
+    InvalidNewAuthority,
 }

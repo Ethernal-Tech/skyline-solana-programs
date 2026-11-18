@@ -1541,6 +1541,89 @@ export class UpdateFeeConfigHelper {
 }
 
 // ============================================================================
+// SET AUTHORITY HELPER
+// ============================================================================
+
+export interface SetAuthorityParams {
+  newAuthority: web3.Keypair;
+  /** Override the recipient named in the instruction to test invalid handoffs. */
+  requestedAuthority?: web3.PublicKey;
+  /** Signer — must be the current authority. Defaults to owner. */
+  signer?: web3.Keypair;
+  /** Override the fee_config account (used to inject a wrong account in error tests). */
+  feeConfig?: web3.PublicKey;
+  /** Override the program_config account (used to inject a wrong account in error tests). */
+  programConfig?: web3.PublicKey;
+}
+
+export class SetAuthorityHelper {
+  private program: Program<SkylineProgram>;
+  private owner: anchor.Wallet;
+  private feeConfigPDA: web3.PublicKey;
+  private programConfigPDA: web3.PublicKey;
+
+  constructor(program: Program<SkylineProgram>, owner: anchor.Wallet) {
+    this.program = program;
+    this.owner = owner;
+    this.feeConfigPDA = web3.PublicKey.findProgramAddressSync(
+      [Buffer.from(SEEDS.FEE_CONFIG)],
+      program.programId
+    )[0];
+    this.programConfigPDA = web3.PublicKey.findProgramAddressSync(
+      [Buffer.from(SEEDS.PROGRAM_CONFIG)],
+      program.programId
+    )[0];
+  }
+
+  private buildCall(params: SetAuthorityParams) {
+    const signer = params.signer ?? this.owner.payer;
+    const signers = [signer, params.newAuthority].filter(
+      (keypair) => !keypair.publicKey.equals(this.owner.publicKey)
+    );
+
+    return this.program.methods
+      .setAuthority(params.requestedAuthority ?? params.newAuthority.publicKey)
+      .accountsPartial({
+        authority: signer.publicKey,
+        feeConfig: params.feeConfig ?? this.feeConfigPDA,
+        programConfig: params.programConfig ?? this.programConfigPDA,
+        newAuthoritySigner: params.newAuthority.publicKey
+      })
+      .signers(signers);
+  }
+
+  async call(params: SetAuthorityParams): Promise<string> {
+    return await this.buildCall(params).rpc();
+  }
+
+  /**
+   * Expects the call to fail with one of the given Anchor error codes
+   * (a single code, or several when the runtime may report either).
+   */
+  async expectError(
+    params: SetAuthorityParams,
+    expectedErrorCode: string | string[]
+  ): Promise<void> {
+    const expected = Array.isArray(expectedErrorCode)
+      ? expectedErrorCode
+      : [expectedErrorCode];
+    let thrown = false;
+    try {
+      await this.buildCall(params).rpc();
+    } catch (e: any) {
+      thrown = true;
+      const code = e.error?.errorCode?.code ?? e.errorCode?.code;
+      expect(expected).to.include(code);
+    }
+    if (!thrown) {
+      throw new Error(
+        `Expected setAuthority to fail with ${expected.join(" or ")}, but it succeeded`
+      );
+    }
+  }
+}
+
+// ============================================================================
 // HOT WALLET INCREMENT TYPES
 // ============================================================================
 
@@ -1715,6 +1798,44 @@ export class EventParser {
         if (event) {
           events.push(event);
         }
+      }
+    }
+    return events;
+  }
+
+  /**
+   * Decode all events emitted via `emit!` in a transaction. These are recorded
+   * as `Program data:` log lines (not self-CPI inner instructions).
+   * Event names are camelCased by the Anchor TS coder (e.g. `authorityChangedEvent`).
+   */
+  async parseLogEvents(
+    signature: string
+  ): Promise<{ name: string; data: any }[]> {
+    let tx = null;
+    for (let attempt = 0; attempt < 10 && !tx; attempt++) {
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      tx = await this.connection.getTransaction(signature, {
+        commitment: "confirmed",
+        maxSupportedTransactionVersion: 0
+      });
+    }
+
+    if (!tx || !tx.meta || !tx.meta.logMessages) {
+      console.error("Transaction not found or missing logs");
+      return [];
+    }
+
+    const prefix = "Program data: ";
+    const events: { name: string; data: any }[] = [];
+    for (const log of tx.meta.logMessages) {
+      if (!log.startsWith(prefix)) {
+        continue;
+      }
+      const event = this.program.coder.events.decode(
+        log.slice(prefix.length).trim()
+      );
+      if (event) {
+        events.push(event);
       }
     }
     return events;
@@ -2096,6 +2217,7 @@ export class SkylineTestFixture {
   public tokenRegistry: TokenRegistryHelper;
   public hotWalletIncrement: HotWalletIncrementHelper;
   public updateFeeConfig: UpdateFeeConfigHelper;
+  public setAuthority: SetAuthorityHelper;
 
   constructor(ctx: TestContext) {
     this.pdas = new PDAs(ctx.program.programId);
@@ -2122,6 +2244,7 @@ export class SkylineTestFixture {
       this.pdas.vault()
     );
     this.updateFeeConfig = new UpdateFeeConfigHelper(ctx.program, ctx.owner);
+    this.setAuthority = new SetAuthorityHelper(ctx.program, ctx.owner);
   }
 
   /** Check if validator set is already initialized */

@@ -20,10 +20,7 @@ pub struct UpdateProgramVersion<'info> {
 }
 
 impl<'info> UpdateProgramVersion<'info> {
-    pub fn process_instruction(
-        ctx: Context<Self>,
-        version_string: String,
-    ) -> Result<()> {
+    pub fn process_instruction(ctx: Context<Self>, version_string: String) -> Result<()> {
         require!(
             version_string.len() <= 32,
             CustomError::VersionStringTooLong

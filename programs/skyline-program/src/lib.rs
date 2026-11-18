@@ -31,6 +31,7 @@
 //!
 //! - `initialize`: Initialize the validator set and vault for the bridge system
 //! - `update_program_version`: Update on-chain program version metadata (authority only)
+//! - `set_authority`: Rotate the bridge admin with both authorities' signatures
 //! - `bridge_request`: Create a cross-chain transfer request and transfer source tokens to vault
 //! - `create_or_approve_vsu`: Create or approve a validator set update (requires current validator approval)
 //! - `bridge_transaction`: Create or approve a bridging transaction to transfer tokens to recipients (requires validator approval)
@@ -221,6 +222,22 @@ pub mod skyline_program {
         version_string: String,
     ) -> Result<()> {
         UpdateProgramVersion::process_instruction(ctx, version_string)
+    }
+
+    /// Moves the bridge admin to `new_authority`.
+    ///
+    /// Rewrites `FeeConfig.authority` and `ProgramConfig.authority` in one transaction so
+    /// every admin-gated instruction follows the new key. The current authority and
+    /// the named recipient must both sign.
+    ///
+    /// # Arguments
+    /// * `new_authority` - Public key that becomes the bridge admin
+    ///
+    /// # Errors
+    /// * `Unauthorized`       - Signer is not the authority stored on both configs
+    /// * `InvalidNewAuthority` - Recipient is the default key, the current authority, or differs from the recipient signer
+    pub fn set_authority(ctx: Context<SetAuthority>, new_authority: Pubkey) -> Result<()> {
+        SetAuthority::process_instruction(ctx, new_authority)
     }
 
     /// Register a pre-existing SPL mint as a LockUnlock bridgeable token.

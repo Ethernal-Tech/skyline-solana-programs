@@ -415,3 +415,24 @@ register_mint_burn_token(token_id: u16, decimals: u8, min_bridging_amount: u64, 
 4. Creates `TokenIdGuard` PDA to reserve the `token_id`
 
 **Emits:** `MintBurnTokenRegisteredEvent { token_id, mint, name, symbol }`
+
+---
+
+### 8) `set_authority`
+
+```
+set_authority(new_authority: Pubkey)
+```
+
+**Purpose:** Move the bridge admin to a new key in one step by rewriting both `fee_config.authority` and `program_config.authority`, so every admin-gated instruction follows the new key.
+
+The current authority authorizes the handoff and the incoming authority accepts it by co-signing the same instruction. A governance program can sign for its PDA through `invoke_signed`.
+
+**Required accounts:** `authority` (signer), `fee_config`, `program_config`, `new_authority_signer` (signer)
+
+**Validation:**
+- `authority` must equal the authority stored on both configs, otherwise `Unauthorized`
+- `new_authority_signer` must match the `new_authority` argument, otherwise `InvalidNewAuthority`
+- `new_authority != Pubkey::default()` and `new_authority != authority`, otherwise `InvalidNewAuthority`
+
+**Emits:** `AuthorityChangedEvent { old_authority, new_authority }`
