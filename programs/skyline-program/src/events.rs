@@ -70,6 +70,15 @@ pub struct ProgramVersionUpdatedEvent {
     pub version_string: String,
 }
 
+/// Emitted when the bridge admin is rotated by `set_authority`.
+#[event]
+pub struct AuthorityChangedEvent {
+    /// Authority that signed the rotation.
+    pub old_authority: Pubkey,
+    /// Authority now stored on `FeeConfig` and `ProgramConfig`.
+    pub new_authority: Pubkey,
+}
+
 /// Emitted when fee config values are updated by the authority.
 #[event]
 pub struct FeeConfigUpdatedEvent {

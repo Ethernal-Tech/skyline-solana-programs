@@ -2,7 +2,7 @@
   "address": "CkTNcuk9EELmuR65eCfzKfz8XpDvJ27FPFHauGHVD1E9",
   "metadata": {
     "name": "skyline_program",
-    "version": "0.4.0",
+    "version": "0.5.0",
     "spec": "0.1.0",
     "description": "Created with Anchor"
   },
@@ -1283,6 +1283,106 @@
       ]
     },
     {
+      "name": "set_authority",
+      "docs": [
+        "Moves the bridge admin to `new_authority`.",
+        "",
+        "Rewrites `FeeConfig.authority` and `ProgramConfig.authority` in one transaction so",
+        "every admin-gated instruction follows the new key. The current authority and",
+        "the named recipient must both sign.",
+        "",
+        "# Arguments",
+        "* `new_authority` - Public key that becomes the bridge admin",
+        "",
+        "# Errors",
+        "* `Unauthorized`       - Signer is not the authority stored on both configs",
+        "* `InvalidNewAuthority` - Recipient is the default key, the current authority, or differs from the recipient signer"
+      ],
+      "discriminator": [
+        133,
+        250,
+        37,
+        21,
+        110,
+        163,
+        26,
+        121
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "signer": true,
+          "relations": [
+            "fee_config",
+            "program_config"
+          ]
+        },
+        {
+          "name": "fee_config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  102,
+                  101,
+                  101,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "program_config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  114,
+                  111,
+                  103,
+                  114,
+                  97,
+                  109,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "new_authority_signer",
+          "docs": [
+            "Accepts the role for the public key named in the instruction."
+          ],
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "new_authority",
+          "type": "pubkey"
+        }
+      ]
+    },
+    {
       "name": "update_fee_config",
       "docs": [
         "Update the fee configuration for the bridge.",
@@ -1622,6 +1722,19 @@
   ],
   "events": [
     {
+      "name": "AuthorityChangedEvent",
+      "discriminator": [
+        85,
+        105,
+        159,
+        188,
+        6,
+        44,
+        52,
+        28
+      ]
+    },
+    {
       "name": "BridgeRequestEvent",
       "discriminator": [
         162,
@@ -1934,9 +2047,39 @@
       "code": 6038,
       "name": "InvalidSignedPayload",
       "msg": "Validator-signed payload is invalid or inconsistent with the instruction"
+    },
+    {
+      "code": 6039,
+      "name": "InvalidNewAuthority",
+      "msg": "New authority must sign, be non-default, and differ from the current authority"
     }
   ],
   "types": [
+    {
+      "name": "AuthorityChangedEvent",
+      "docs": [
+        "Emitted when the bridge admin is rotated by `set_authority`."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "old_authority",
+            "docs": [
+              "Authority that signed the rotation."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "new_authority",
+            "docs": [
+              "Authority now stored on `FeeConfig` and `ProgramConfig`."
+            ],
+            "type": "pubkey"
+          }
+        ]
+      }
+    },
     {
       "name": "BridgeRequestEvent",
       "docs": [
