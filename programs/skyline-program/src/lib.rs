@@ -304,6 +304,16 @@ pub mod skyline_program {
         )
     }
 
+    /// Rename a registered mint/burn token using the vault's metadata update authority.
+    pub fn rename_mint_burn_token(
+        ctx: Context<RenameMintBurnToken>,
+        token_id: u16,
+        name: String,
+        symbol: String,
+    ) -> Result<()> {
+        RenameMintBurnToken::process_instruction(ctx, token_id, name, symbol)
+    }
+
     /// Top up the bridge vault hot wallet with either wSOL or native SOL.
     ///
     /// Eligible mints:

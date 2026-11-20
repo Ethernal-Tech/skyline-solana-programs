@@ -40,6 +40,10 @@ pub use register_lock_unlock_token::*;
 pub mod register_mint_burn_token;
 pub use register_mint_burn_token::*;
 
+/// Rename a registered mint/burn token (authority only).
+pub mod rename_mint_burn_token;
+pub use rename_mint_burn_token::*;
+
 /// Lock additional lock/unlock tokens into the bridge vault (hot wallet).
 pub mod hot_wallet_increment;
 pub use hot_wallet_increment::*;
