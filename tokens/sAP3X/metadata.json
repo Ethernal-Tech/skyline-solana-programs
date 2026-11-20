@@ -2,7 +2,7 @@
     "name": "sAP3X",
     "symbol": "sAP3X",
     "description": "sAP3X is a AP3X token on Solana bridged from AP3X ecosystem via Skyline.",
-    "image": "https://raw.githubusercontent.com/Ethernal-Tech/skyline-solana-programs/blob/80c9488a547d0c52f0f957949c567b26a41b3db4/tokens/sAP3X/sAP3X-solana.png",
+    "image": "https://raw.githubusercontent.com/Ethernal-Tech/skyline-solana-programs/80c9488a547d0c52f0f957949c567b26a41b3db4/tokens/sAP3X/sAP3X-solana.png",
     "twitter": "https://x.com/skyline_bridge",
     "website": "https://skyline.testnet.ethernal.work/"
 }
