@@ -156,7 +156,6 @@ impl<'info> RegisterMintBurnToken<'info> {
         // Vault PDA signs the CPI as update_authority + mint_authority.
         // We rebuild the vault seeds here so Anchor can produce the PDA signer.
         //
-        // is_mutable = false: metadata is set once at registration and never changed.
         // update_authority = vault: bridge retains authority over metadata.
 
         let vault_bump = vault.bump;
@@ -186,7 +185,7 @@ impl<'info> RegisterMintBurnToken<'info> {
                 collection: None,
                 uses: None,
             },
-            true, // is_mutable — set true to allow future URI updates by vault
+            true, // is_mutable — allow updates signed by the vault
             true, // update_authority_is_signer
             None, // collection_details
         )?;

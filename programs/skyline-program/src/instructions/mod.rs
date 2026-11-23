@@ -28,6 +28,10 @@ pub use update_fee_config::*;
 pub mod update_program_version;
 pub use update_program_version::*;
 
+/// Rotate the bridge admin on FeeConfig and ProgramConfig (authority only)
+pub mod set_authority;
+pub use set_authority::*;
+
 /// Register a new lock/unlock token (authority only)
 pub mod register_lock_unlock_token;
 pub use register_lock_unlock_token::*;
@@ -35,6 +39,10 @@ pub use register_lock_unlock_token::*;
 /// Register a new mint/burn token (authority only)
 pub mod register_mint_burn_token;
 pub use register_mint_burn_token::*;
+
+/// Rename a registered mint/burn token (authority only).
+pub mod rename_mint_burn_token;
+pub use rename_mint_burn_token::*;
 
 /// Lock additional lock/unlock tokens into the bridge vault (hot wallet).
 pub mod hot_wallet_increment;

@@ -833,19 +833,14 @@ describe("skyline-program", () => {
           "vault balance increased by amount"
         );
 
-        // Event is emitted by the program — assert at least one
-        // `Program data:` log appears, indicating an Anchor event
-        // was emitted by this instruction.
-        await new Promise((r) => setTimeout(r, 500));
-        const tx = await provider.connection.getTransaction(sig, {
-          commitment: "confirmed",
-          maxSupportedTransactionVersion: 0
-        });
-        const dataLogs = (tx?.meta?.logMessages ?? []).filter((l) =>
-          l.includes("Program data:")
-        );
-        expect(dataLogs.length, "HotWalletIncrementEvent should be emitted")
-          .to.be.greaterThan(0);
+        // Event is emitted via `emit_cpi!`, so it is carried in a self-CPI
+        // inner instruction rather than a `Program data:` log.
+        const events = await fixture.events.parseCpiEvents(sig);
+        const event = events.find((e) => e.name === "hotWalletIncrementEvent");
+        expect(event, "HotWalletIncrementEvent should be emitted").to.exist;
+        expect(event!.data.sender.toBase58()).to.equal(user.publicKey.toBase58());
+        expect(event!.data.mint.toBase58()).to.equal(wsolMint.toBase58());
+        expect(event!.data.amount.toString()).to.equal(amount.toString());
       });
 
       it("locks additional tokens into existing vault ATA", async () => {

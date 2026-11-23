@@ -52,6 +52,9 @@
 //!
 //! All addresses are validated on-chain against their derived/expected values.
 //! The relayer must pass accounts in this exact order or the instruction fails.
+//!
+//! The named accounts end with `event_authority` and `program`, added by
+//! `#[event_cpi]` for `emit_cpi!`; `remaining_accounts` start after them.
 
 use anchor_lang::solana_program::sysvar::instructions::{
     load_current_index_checked, load_instruction_at_checked,
@@ -121,6 +124,11 @@ pub struct TransferItem {
 ///
 /// All per-transfer and per-mint accounts are passed via `remaining_accounts`
 /// in the strict positional layout described in the module-level doc.
+///
+/// `#[event_cpi]` appends the `event_authority` PDA and `program` accounts used by `emit_cpi!`.
+/// They are named accounts, so they sit after the other named accounts and before
+/// `remaining_accounts`.
+#[event_cpi]
 #[derive(Accounts)]
 pub struct BridgeTransaction<'info> {
     /// Pays rent for any recipient ATAs that need to be created (~0.002 SOL each)
@@ -547,7 +555,8 @@ impl<'info> BridgeTransaction<'info> {
 
         // ── 10. Emit event ───────────────────────────────────────────────────────
 
-        emit!(TransactionExecutedEvent {
+        // Recorded as a self-CPI (see BridgeRequest) rather than a log line.
+        emit_cpi!(TransactionExecutedEvent {
             batch_id: signed_payload.batch_id,
             transfer_count: signed_payload.receivers.len() as u8,
             fee: signed_payload.fee_amount,
