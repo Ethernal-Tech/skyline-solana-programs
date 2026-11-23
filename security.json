@@ -1,14 +1,14 @@
 {
     "name": "Skyline Program",
-    "logo": "https://raw.githubusercontent.com/Ethernal-Tech/apex-web/ba49b3736f5542e8c13a189b112db58be0f78e39/frontend/public/skyline-logo.png",
+    "logo": "https://raw.githubusercontent.com/Ethernal-Tech/skyline-solana-programs/736a821b3a253257a6e13b37052a1fc5797bbfe8/skyline-program-logo.png",
     "description": "This program enables bridging Solana tokens with Skyline bridge.",
     "project_url": "https://skyline.testnet.ethernal.work/",
     "contacts": ["email:contact@skylinebridge.tech", "twitter:@skyline_bridge"],
     "policy": "https://github.com/Ethernal-Tech/skyline-solana-programs/blob/fd704c544192ca666e9653c2eb468fe0266e6014/SECURITY.md",
     "preferred_languages": ["en"],
     "source_code": "https://github.com/Ethernal-Tech/skyline-solana-programs/tree/testnet",
-    "source_release": "v0.2.0",
-    "source_revision": "e4c954a",
+    "source_release": "v1.0.0",
+    "source_revision": "b939ce3",
     "expiry": "2027-01-01",
-    "version": "0.2.0"
+    "version": "1.0.0"
 }
