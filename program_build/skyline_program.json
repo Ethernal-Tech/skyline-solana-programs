@@ -1,5 +1,5 @@
 {
-  "address": "CkTNcuk9EELmuR65eCfzKfz8XpDvJ27FPFHauGHVD1E9",
+  "address": "6R9GdZEpwBFTicsZCqN7e7P4gqoKDTdiDQSceJz5pGHY",
   "metadata": {
     "name": "skyline_program",
     "version": "1.0.0",
@@ -838,7 +838,7 @@
           "docs": [
             "This program's executable account — used to derive / verify `program_data`."
           ],
-          "address": "CkTNcuk9EELmuR65eCfzKfz8XpDvJ27FPFHauGHVD1E9"
+          "address": "6R9GdZEpwBFTicsZCqN7e7P4gqoKDTdiDQSceJz5pGHY"
         },
         {
           "name": "program_data",
