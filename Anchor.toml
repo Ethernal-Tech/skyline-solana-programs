@@ -6,7 +6,7 @@ resolution = true
 skip-lint = false
 
 [programs.localnet]
-skyline_program = "CkTNcuk9EELmuR65eCfzKfz8XpDvJ27FPFHauGHVD1E9"
+skyline_program = "EBYJcQoZNVqQfeettZDF5JCamRerDnWBiPmWWitqwbMz"
 
 [registry]
 url = "https://api.apr.dev"
