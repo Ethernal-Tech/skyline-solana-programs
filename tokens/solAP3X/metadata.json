@@ -1,0 +1,8 @@
+{
+    "name": "solAP3X",
+    "symbol": "solAP3X",
+    "description": "solAP3X is a AP3X token on Solana bridged from AP3X ecosystem via Skyline.",
+    "image": "https://raw.githubusercontent.com/Ethernal-Tech/skyline-solana-programs/5ad1f45c0c162ba11a725a442349deb6c32a3699/tokens/solAP3X/solAP3X.png",
+    "twitter": "https://x.com/skyline_bridge",
+    "website": "https://skylinebridge.tech/"
+}
